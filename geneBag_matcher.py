@@ -1,9 +1,3 @@
-"""
-tr1 | tr1(jac, cont) | tr2(jac, cont)
-geneX | geneY(80, 100) | geneX(100, 80), geneY(80, 100), .... 
-geneY | geneX(80, 100) | geneX(100, 80), geneY(80, 100), ....
-"""
-
 tr1_tr1 = dict()
 tr1_tr2 = dict()
 
