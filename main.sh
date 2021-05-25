@@ -2,34 +2,29 @@
 
 KSIZE=25
 
-VER38_GRCh38_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.transcripts.fa.gz
-VER28_GRCh37_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.transcripts.fa.gz
+REF1=VER28_GRCh37
+REF2=VER38_GRCh38
 
-VER38_GRCh38=VER38_GRCh38.fa
-VER28_GRCh37=VER28_GRCh37.fa
+REF1_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.transcripts.fa.gz
+REF2_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.transcripts.fa.gz
 
-wget ${VER38_GRCh38_URL} -O ${VER38_GRCh38}.gz
-wget ${VER28_GRCh37_URL} -O ${VER28_GRCh37}.gz
-
-gunzip *gz
+wget ${REF1_URL} -O ${REF1}.fa.gz
+wget ${REF2_URL} -O ${REF2}.fa.gz
+gunzip ${REF1}.fa.gz ${REF2}.fa.gz
 
 #1 Transform first annotation -------------------------------------------------------------
-sed -i 's/^>/>VER38_GRCh38|/' ${VER38_GRCh38}
-
-grep ">" ${VER38_GRCh38} | cut -c2- |  awk -F'|' '{print $0"\tver38_GRCh38."$3}' > ${VER38_GRCh38}.names
+sed -i "s/^>/>$REF1|/" ${REF1}.fa
+grep ">" ${REF1}.fa | cut -c2- |  awk -v ref=${REF1} -F'|' '{print $0"\t"ref"."$3}' > ${REF1}.fa.names
 
 #2 Transform second annotation
-sed -i 's/^>/>VER28_GRCh37|/' ${VER28_GRCh37}
-
-grep ">" ${VER28_GRCh37} | cut -c2- |  awk -F'|' '{print $0"\tver28_GRCh37."$3}' > ${VER28_GRCh37}.names
+sed -i "s/^>/>$REF2|/" ${REF2}.fa
+grep "^>" ${REF2}.fa | cut -c2- |  awk -v ref=${REF2} -F'|' '{print $0"\t"ref"."$3}' > ${REF2}.fa.names
 
 #3 Indexing & Pairwise generation -------------------------------------------------------------
-
-cat ${VER38_GRCh38} ${VER28_GRCh37} > merged.fa
-cat ${VER38_GRCh38}.names ${VER28_GRCh37}.names > merged.fa.names
+cat ${REF2}.fa ${REF1}.fa > merged.fa
+cat ${REF2}.fa.names ${REF1}.fa.names > merged.fa.names
 
 python index.py merged.fa ${KSIZE}
-
 kSpider2 pairwise -i idx_merged
 
 #4 Annotation & Filteration -------------------------------------------------------------
@@ -41,9 +36,6 @@ paste <(tail -n+2 ${kPro_index}.namesMap |cut -d" " -f1)  <(tail -n+2 ${kPro_ind
 echo "node_id node_name size" | tr ' ' '\t' > ${kPro_index}_nodes_size.tsv
 awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$2]=$3;next;}{if(a[$1]!="")print $0,a[$1]}' ${kPro_index}_kSpider_seqToKmersNo.tsv ${kPro_index}.namesMap.tmp >> ${kPro_index}_nodes_size.tsv
 rm ${kPro_index}.namesMap.tmp*
-
-# Let us have a look
-head -n5 ${kPro_index}_nodes_size.tsv
 
 # 2. Annotation of the numerically coded association file
 # a) Add items names and no of associated items 
@@ -59,13 +51,7 @@ awk -v md=$md -v mc=$mc 'BEGIN{FS="\t";S="|";}FNR==NR{a[$1]=$3;b[$1]=$2S$3;next;
      printf("%s%s%s%s%s%s%.1f%s%.1f%s%s%s%s\n", $2,S,b[$2],S,$4,S,jDist,S,smPerc,S,b[$3],S,$3)}' \
    ${kPro_index}_nodes_size.tsv <(tail -n+2 ${kPro_index}_kSpider_pairwise.tsv) >> ${kPro_index}_relations.csv
 
-# Let us have a look
-wc -l ${kPro_index}_relations.csv 
-echo "----------------------"
-head -n5 ${kPro_index}_relations.csv
-
 #5 Automatic Detection of Best Mutual GeneBag Match -------------------------------------------------------------
+python geneBag_matcher.py "${REF1}." "${REF2}." "${kPro_index}_relations.csv"
 
 
-
-#6  Best Match GeneBag query

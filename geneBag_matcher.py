@@ -1,11 +1,22 @@
+import sys
+
+if len(sys.argv) != 4:
+    sys.exit("run: python geneBag_matcher.py <tr1_prefix> <tr2_prefix> <relationsFile>")
+
+elif len(sys.argv) == 4:
+    tr1_prefix = sys.argv[1]
+    tr2_prefix = sys.argv[2]
+    file1 = sys.argv[3]
+
+
 tr1_tr1 = dict()
 tr1_tr2 = dict()
 
 tr2_tr2 = dict()
 tr2_tr1 = dict()
 
-tr1_prefix = "ver28_GRCh37."
-tr2_prefix = "ver38_GRCh38."
+#tr1_prefix = "ver28_GRCh37."
+#tr2_prefix = "ver38_GRCh38."
 
 def keepTheGreatest_local(current_gene, new_gene):
     # print(f"checking {current_gene} VS. {new_gene}")
@@ -39,10 +50,10 @@ def keepTheGreatest(current_list, new_gene):
 
     
 
-file1 = "sample.csv"
-file2 = "idx_merged_relations.csv"
+#file1 = "sample.csv"
+#file1 = "idx_merged_relations.csv"
 
-with open(file2) as READER:
+with open(file1) as READER:
     next(READER)
     for line in READER:
         line = line.split('|')

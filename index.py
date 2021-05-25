@@ -15,6 +15,6 @@ elif len(sys.argv) == 3:
 
 chunkSize = 5000
 
-KF = kp.kDataFrameMQF(kp.KMERS, kp.nonCanonicalInteger_Hasher, {"kSize":kSize})
+KF = kp.kDataFramePHMAP(kp.KMERS, kp.nonCanonicalInteger_Hasher, {"kSize":kSize})
 cKF = kp.index(KF, fasta_file, chunkSize, fasta_file + ".names")
 cKF.save("idx_" + fasta_file.replace(".fa",""))
