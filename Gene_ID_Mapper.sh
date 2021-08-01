@@ -40,7 +40,9 @@ tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($9!="")print $1,$2
 head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$11}' > hgnc.ID_to_EachPrev
 tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($11!="")print $1,$2,$11}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t<"a[i]">";}' >> hgnc.ID_to_EachPrev  
 
-## Generate a map for genes IDs withdrawn without approved replacement 
+## Generate a map for genes IDs withdrawn without approved replacement
+## Known limitation: We are considering genes replaced by withdrawn genes to be discontinued. This is a possiblity that this new withdrawn gene is also replaced by new approved gene 
+##                   but I do not see any example in the current DB (if a gene is replaced, the new genes (column 4) are either "Approved" or "Entry Withdrawn" but not "Merged/Split") 
 head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$3}' > hgnc.ID_to_discontinued 
 cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Entry Withdrawn")print $1,$2,"<"$3">"}' >> hgnc.ID_to_discontinued 
 cat withdrawn.txt | grep -v "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,$2,"<"$3">"}'  >> hgnc.ID_to_discontinued  
@@ -124,28 +126,46 @@ if [ ! -f Homo_sapiens.gene_info ];then
   wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
   gunzip Homo_sapiens.gene_info.gz
 fi
+if [ ! -f human_gene_history ];then
+  wget ftp://ftp.ncbi.nih.gov/gene/DATA/gene_history.gz
+  gunzip gene_history.gz
+  head -n1 gene_history > human_gene_history
+  grep -w ^9606 gene_history >> human_gene_history
+fi
 
-ncbi_tot=$(tail -n+2 Homo_sapiens.gene_info | wc -l)
+echo "Basic check of HGNC Ids:"
+echo "-----------------------------"
 ncbi_IDs=$(tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS="\t";}{print $2}' | sort | uniq | wc -l) ## 61622
-ncbi_sym=$(tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS="\t";}{print $3}' | sort | uniq | wc -l) ## 61563
+ncbi_tot=$(tail -n+2 Homo_sapiens.gene_info | wc -l)
 if (( ncbi_tot != ncbi_IDs));then echo "WARNING: The are $ncbi_tot IDs for NCBI genes but only $ncbi_IDs are uniq. There are NCBI genes with duplicate IDs!!";fi
 
-ncbiSymb_status=""
-> ncbiSymb.ambiguous_report
-if (( ncbi_sym != ncbi_IDs));then ncbiSymb_status="WARNING: There are duplicate gene symbols in the current NCBI genes.";
-  tail -n+2 Homo_sapiens.gene_info | awk -F"\t" '{print $3}' | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr > ncbiSymb.ambiguous_freq
-  ncbiSymb_dedup_ids=$(cat ncbiSymb.ambiguous_freq | awk '{a+=$1}END{print a}')
-  ncbiSymb_dedup_sym=$(wc -l ncbiSymb.ambiguous_freq)
-  echo "There are $ncbiSymb_dedup_sym symbols assigned to $ncbiSymb_dedup_ids genes" > ncbiSymb.ambiguous_report
-  echo "Here are the most ambiguous symbols in the current NCBI:" >> ncbiSymb.ambiguous_report 
-  head ncbiSymb.ambiguous_freq >> ncbiSymb.ambiguous_report
-else ncbiSymb_status="There are no duplicate gene symbols in the NCBI genes.";fi
-echo "$ncbiSymb_status The current NCBI genes have $ncbi_IDs IDs and corresponding $ncbi_sym symbols."
-cat ncbiSymb.ambiguous_report
+ncbiHis_IDs=$(tail -n+2 human_gene_history | awk 'BEGIN{FS="\t";}{print $3}' | sort | uniq | wc -l)
+ncbiHis_tot=$(tail -n+2 human_gene_history | wc -l)
+if (( ncbiHis_tot != ncbiHis_IDs));then echo "WARNING: The are $ncbiHis_tot IDs for discontinued NCBI genes but only $ncbiHis_IDs are uniq. There are discontinued NCBI genes with duplicate IDs!!";fi
+
+echo "Basic check is done"
+echo "-------------------"
+
+## Generate a map of gene IDs to symbols
+head -n1 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{print $2,"status",$3}' > entrez.ID_to_Current
+tail -n+2 Homo_sapiens.gene_infot | awk 'BEGIN{FS=OFS="\t";}{print $1,"Official","<"$3">"}' >> entrez.ID_to_Current 
 
 ## Generate a map of gene IDs to symbols and each one of the alias
-head -n1  Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{print $2,$3,$5}' > ncbi.ID_to_symbol_to_EachAlias
-tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{if($5!="-")print $2,$3,$5}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t"a[i];}' >> ncbi.ID_to_symbol_to_EachAlias 
+head -n1  Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{print $2,$3,$5}' > ncbi.ID_to_EachAlias
+tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{if($5!="-")print $2,$3,$5}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t<"a[i]">";}' >> ncbi.ID_to_EachAlias 
+
+## Generate a map for genes IDs withdrawn without replacement 
+head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > ncbi.ID_to_discontinued 
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$3]=$2;next;}{new_id=$2;while(1){ \
+                                                             if(!a[new_id]){print $0;break;} \
+                                                             else if(a[new_id]=="-"){print $0,"<discontinued>";break;} \
+                                                             else new_id=a[new_id];}}' human_gene_history human_gene_history > human_gene_history_track
+cat human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{if($2=="-" || $4=="<discontinued>")print $3,"discontinued","<"$4">"}' >> ncbi.ID_to_discontinued 
+
+## Generate a map for genes IDs withdrawn but replaced by new IDs
+head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > ncbi.ID_to_replaced 
+tail -n+2 human_gene_history_track | grep -v "<discontinued>" | awk 'BEGIN{FS=OFS="\t";}{if($2!="-")print $3,"replaced","<"$4">"}' >> ncbi.ID_to_replaced 
+
 
 ## Identify genes with ambiguous alias (the alias is ambiguous if it matches another alias, previous or current gene symbol)
 # create list of all gene symbols
@@ -167,32 +187,6 @@ echo "-------------------------"
 
 echo "Explore the gene symbols history in NCBI"
 echo "=========================================="
-
-if [ ! -f gene_history ];then
-  wget ftp://ftp.ncbi.nih.gov/gene/DATA/gene_history.gz
-  gunzip gene_history.gz
-fi
-head -n1 gene_history > human_gene_history
-grep -w ^9606 gene_history >> human_gene_history
-
-ncbiHis_tot=$(tail -n+2 human_gene_history | wc -l)
-ncbiHis_IDs=$(tail -n+2 human_gene_history | awk 'BEGIN{FS="\t";}{print $3}' | sort | uniq | wc -l)
-ncbiHis_sym=$(tail -n+2 human_gene_history | awk 'BEGIN{FS="\t";}{print $4}' | sort | uniq | wc -l)
-if (( ncbiHis_tot != ncbiHis_IDs));then echo "WARNING: The are $ncbiHis_tot IDs for discontinued NCBI genes but only $ncbiHis_IDs are uniq. There are discontinued NCBI genes with duplicate IDs!!";fi
-
-
-ncbiHis_status=""
-> ncbiHis.ambiguous_report
-if (( ncbiHis_sym != ncbiHis_IDs));then ncbiHis_status="WARNING: There are duplicate gene symbols in the discontinued/replaced NCBI genes.";
-  tail -n+2 human_gene_history | awk -F"\t" '{print $4}' | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr > ncbiHis.ambiguous_freq
-  ncbiHis_dedup_ids=$(cat ncbiHis.ambiguous_freq | awk '{a+=$1}END{print a}')
-  ncbiHis_dedup_sym=$(wc -l ncbiHis.ambiguous_freq)
-  echo "There are $ncbiHis_dedup_sym symbols assigned to $ncbiHis_dedup_ids genes" > ncbiHis.ambiguous_report
-  echo "Here are the most ambiguous symbols in discontinued/replaced NCBI genes:" >> ncbiHis.ambiguous_report
-  head ncbiHis.ambiguous_freq >> ncbiHis.ambiguous_report
-else ncbiHis_status="There are no duplicate gene symbols in the discontinued/replaced NCBI genes.";fi
-echo "$ncbiHis_status The discontinued/replaced NCBI genes have $ncbiHis_IDs IDs and corresponding $ncbiHis_sym symbols."
-cat ncbiHis.ambiguous_report
 
 echo "Discontinued/replaced NCBI records are classified into:" 
 tail -n+2 human_gene_history | awk 'BEGIN{FS="\t";}{if($2=="-")a["Discontinued"]+=1;else a["Replaced"]+=1;}END{for(i in a)print a[i],i}'  
