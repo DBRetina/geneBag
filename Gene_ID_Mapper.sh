@@ -221,6 +221,9 @@ echo "No. of withdrawn symbols used as alias symbols = "$(cat wdEntrez.ID_to_Eac
 
 comm -13 <(cat entrez.ID_to_EachAlias | awk 'BEGIN{FS=OFS="\t";}{print $1,$3}' | sort) <(sort wdEntrez.ID_to_EachPrev) > wdEntrez.ID_to_EachPrev.missing
 echo "No. of missing withdrawn symbols = "$(cat wdEntrez.ID_to_EachPrev.missing | wc -l)
+
+grep -v "<LOC.*>" wdEntrez.ID_to_EachPrev.missing > wdEntrez.ID_to_EachPrev.missing.knownIDs
+echo "No. of missing withdrawn symbols after exclusion of LOC* IDs = "$(cat wdEntrez.ID_to_EachPrev.missing.knownIDs | wc -l)
 echo "-------------------------"
 
 ##################################################################################################################
