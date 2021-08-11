@@ -131,10 +131,11 @@ if [ ! -f human_gene_history || ! -f human_gene_history_track ];then
   gunzip gene_history.gz
   head -n1 gene_history > human_gene_history
   grep -w ^9606 gene_history >> human_gene_history
-  awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$3]=$2;next;}{new_id=$2;while(1){ \
-                                                             if(!a[new_id]){print $0;break;} \
-                                                             else if(a[new_id]=="-"){print $0,"<discontinued>";break;} \
-                                                             else new_id=a[new_id];}}' human_gene_history human_gene_history > human_gene_history_track
+  awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$3]=$2;next;}{if($2=="GeneID" || $2=="-"){print $0;}
+                                               else{new_id=$2;while(1){ \
+                                                 if(a[new_id]=="-"){print $0,"<discontinued>";break;} \
+                                                 else if(!a[new_id]){print $0,"<replaced>";break;} \
+                                                 else new_id=a[new_id];}}}' human_gene_history human_gene_history > human_gene_history_track
 fi
 
 echo "Basic check of Entrez Ids:"
@@ -163,8 +164,8 @@ head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > 
 cat human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{if($2=="-" || $6=="<discontinued>")print $3,"discontinued","<"$4">"}' >> entrez.ID_to_discontinued 
 
 ## Generate a map for genes IDs withdrawn but replaced by new IDs
-head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > entrez.ID_to_replaced 
-tail -n+2 human_gene_history_track | grep -v "<discontinued>" | awk 'BEGIN{FS=OFS="\t";}{if($2!="-")print $3,"replaced","<"$4">"}' >> entrez.ID_to_replaced 
+head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > entrez.ID_to_replaced
+cat human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{if($6=="<replaced>")print $3,"replaced","<"$4">"}' >> entrez.ID_to_replaced
 
 
 ## Identify genes with ambiguous alias (the alias is ambiguous if it matches another alias, previous or current gene symbol)
