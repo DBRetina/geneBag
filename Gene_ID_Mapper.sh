@@ -126,16 +126,17 @@ if [ ! -f Homo_sapiens.gene_info ];then
   wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
   gunzip Homo_sapiens.gene_info.gz
 fi
-if [ ! -f human_gene_history || ! -f human_gene_history_track ];then
+if [ ! -f human_gene_history_track ];then
   wget ftp://ftp.ncbi.nih.gov/gene/DATA/gene_history.gz
   gunzip gene_history.gz
   head -n1 gene_history > human_gene_history
   grep -w ^9606 gene_history >> human_gene_history
-  awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$3]=$2;next;}{if($2=="GeneID" || $2=="-"){print $0;}
+  head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $0,"status"}' > human_gene_history_track
+  awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$3]=$2;next;}!/^#/{if($2=="-"){print $0;}
                                                else{new_id=$2;while(1){ \
                                                  if(a[new_id]=="-"){print $0,"<discontinued>";break;} \
                                                  else if(!a[new_id]){print $0,"<replaced>";break;} \
-                                                 else new_id=a[new_id];}}}' human_gene_history human_gene_history > human_gene_history_track
+                                                 else new_id=a[new_id];}}}' human_gene_history human_gene_history >> human_gene_history_track
 fi
 
 echo "Basic check of Entrez Ids:"
@@ -160,11 +161,11 @@ head -n1  Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{print $2,$3,$5}' > e
 tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t";}{if($5!="-")print $2,$3,$5}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t<"a[i]">";}' >> entrez.ID_to_EachAlias 
 
 ## Generate a map for genes IDs withdrawn without replacement 
-head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > entrez.ID_to_discontinued 
+head -n1 human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{print $3,$6,$4}' > entrez.ID_to_discontinued 
 cat human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{if($2=="-" || $6=="<discontinued>")print $3,"discontinued","<"$4">"}' >> entrez.ID_to_discontinued 
 
 ## Generate a map for genes IDs withdrawn but replaced by new IDs
-head -n1 human_gene_history | awk 'BEGIN{FS=OFS="\t";}{print $3,"status",$4}' > entrez.ID_to_replaced
+head -n1 human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{print $3,$6,$4}' > entrez.ID_to_replaced
 cat human_gene_history_track | awk 'BEGIN{FS=OFS="\t";}{if($6=="<replaced>")print $3,"replaced","<"$4">"}' >> entrez.ID_to_replaced
 
 
