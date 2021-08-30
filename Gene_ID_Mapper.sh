@@ -29,40 +29,46 @@ if (( wd_tot != wd_IDs));then echo "WARNING: The are $wd_tot IDs in the withdraw
 echo "Basic check is done"
 echo "-------------------"
 ## Generate a map of gene IDs to symbols
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,"status",$2}' > hgnc.ID_to_Current
-tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,"Approved","<"$2">"}' >> hgnc.ID_to_Current 
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2}' > hgnc.ID_to_Current
+tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,"<"$2">"}' >> hgnc.ID_to_Current 
 
 ## Generate a map of gene IDs to symbols and each one of the alias
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$9}' > hgnc.ID_to_EachAlias
-tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($9!="")print $1,$2,$9}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t<"a[i]">";}' >> hgnc.ID_to_EachAlias  
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$9}' > hgnc.ID_to_EachAlias
+tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($9!="")print $1,$9}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> hgnc.ID_to_EachAlias  
 
 ## Generate a map of gene IDs to symbols and each one of the previous symbols
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$11}' > hgnc.ID_to_EachPrev
-tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($11!="")print $1,$2,$11}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($3,a,"|");for(i in a)print $1"\t"$2"\t<"a[i]">";}' >> hgnc.ID_to_EachPrev  
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$11}' > hgnc.ID_to_EachPrev
+tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($11!="")print $1,$11}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> hgnc.ID_to_EachPrev  
 
 ## Generate a map for genes IDs withdrawn without approved replacement
 ## Known limitation: We are considering genes replaced by withdrawn genes to be discontinued. This is a possiblity that this new withdrawn gene is also replaced by new approved gene 
 ##                   but I do not see any example in the current DB (if a gene is replaced, the new genes (column 4) are either "Approved" or "Entry Withdrawn" but not "Merged/Split") 
-head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$3}' > hgnc.ID_to_discontinued 
-cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Entry Withdrawn")print $1,$2,"<"$3">"}' >> hgnc.ID_to_discontinued 
-cat withdrawn.txt | grep -v "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,$2,"<"$3">"}'  >> hgnc.ID_to_discontinued  
+head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3}' > hgnc.ID_to_discontinued
+cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Entry Withdrawn")print $1,"<"$3">"}' >> hgnc.ID_to_discontinued;
+cat withdrawn.txt | grep -v "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,"<"$3">"}'  >> hgnc.ID_to_discontinued  
 
 ## Generate a map for genes IDs withdrawn but replaced by new approved IDs
-head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$3}' > hgnc.ID_to_replaced 
-cat withdrawn.txt | grep "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,$2,"<"$3">"}' >> hgnc.ID_to_replaced 
+head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3}' > hgnc.ID_to_replaced 
+cat withdrawn.txt | grep "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,"<"$3">"}' >> hgnc.ID_to_replaced 
 
+## check for repeated symbols in the same gene record
+cat hgnc.ID_to_Current hgnc.ID_to_EachAlias | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.01.Alias_symbols_matching_current_symbols
+cat hgnc.ID_to_Current hgnc.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.02.Previous_symbols_matching_current_symbols
+cat hgnc.ID_to_EachAlias hgnc.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.03.Previous_symbols_matching_alias_symbols
+
+wc -l HGNCsame.*_matching_*_symbols 
 
 ## Identify genes with ambiguous alias or previous symbol (the alias or previous symbol is ambiguous if it matches another alias, previous or current gene symbol)
 # create list of all gene symbols
-tail -n+2 hgnc_complete_set.txt | awk -F"\t" '{print "<"$2">"}' | sort > hgnc.Symbols  
+tail -n+2 hgnc.ID_to_Current | awk -F"\t" '{print $2}' | sort > hgnc.Symbols  
 # create list of all alias symbols
-tail -n+2 hgnc.ID_to_EachAlias | awk -F "\t" '{print $3}' | sort > hgnc.Alias 
+tail -n+2 hgnc.ID_to_EachAlias | awk -F "\t" '{print $2}' | sort > hgnc.Alias 
 # create list of all previous symbols
-tail -n+2 hgnc.ID_to_EachPrev | awk -F "\t" '{print $3}' | sort > hgnc.Prev
+tail -n+2 hgnc.ID_to_EachPrev | awk -F "\t" '{print $2}' | sort > hgnc.Prev
 # create list of withdrawn symbols without approved replacement 
-tail -n+2 hgnc.ID_to_discontinued  | awk -F "\t" '{print $3}' | sort > hgnc.discontinued 
+tail -n+2 hgnc.ID_to_discontinued  | awk -F "\t" '{print $2}' | sort > hgnc.discontinued 
 # create list of withdrawn symbols with approved replacement 
-tail -n+2 hgnc.ID_to_replaced | awk -F "\t" '{print $3}' | sort > hgnc.replaced
+tail -n+2 hgnc.ID_to_replaced | awk -F "\t" '{print $2}' | sort > hgnc.replaced
 
 ## stats
 echo "HGNC approved symbols     = " $(cat hgnc.Symbols | wc -l)        ## 42698
@@ -91,11 +97,12 @@ comm -12 <(cat hgnc.replaced | uniq) <(cat hgnc.discontinued | uniq) > HGNC.15.R
 wc -l HGNC.*_matching_*_symbols 
 
 cat hgnc.{Symbols,Alias,Prev,discontinued,replaced} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > HGNC.ambiguous_freq
-cat HGNC.ambiguous_freq | awk '{print $2}' | grep -Fwf - <(cat hgnc.ID_to_{Current,EachAlias,EachPrev,discontinued,replaced}) | sort -t$'\t' -k3,3 >  hgnc.ambiguous.temp 
-cat hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$6,$9,$11}' > hgnc.complete_withdrawn.temp
-tail -n+2 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$2}' >> hgnc.complete_withdrawn.temp
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$2,$6,$9,$11}' > HGNC.ambiguous
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $3,a[$1]}' hgnc.complete_withdrawn.temp hgnc.ambiguous.temp >> HGNC.ambiguous
+cat HGNC.ambiguous_freq | awk '{print $2}' | grep -Fwf - <(cat hgnc.ID_to_{Current,EachAlias,EachPrev,discontinued,replaced}) | sort -t$'\t' -k2,2 >  hgnc.ambiguous.temp 
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$6,$9,$11,"new_symbol_ifReplaced"}' > hgnc.complete_withdrawn.temp
+tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$6,$9,$11,"-"}' >> hgnc.complete_withdrawn.temp
+tail -n+2 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$2,"-","-",$4}' >> hgnc.complete_withdrawn.temp
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$2,$6,$9,$11,"new_symbol_ifReplaced"}' > HGNC.ambiguous
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' hgnc.complete_withdrawn.temp hgnc.ambiguous.temp | sort | uniq >> HGNC.ambiguous
 
 echo "HGNC has "$(cat HGNC.ambiguous_freq | wc -l)" ambigious symbols causing "$(tail -n+2 HGNC.ambiguous | wc -l)" ambigious records."
 echo "Here are the most 10 ambiguous symbols and how many time do they show up among all gene symbols:"
@@ -104,17 +111,20 @@ echo "-------------------------"
 
 echo "Track replaced HGNC ID"
 echo "----------------------"
-cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,", ");for(i in a){split(a[i],b,"|");if(b[3]=="Approved")print b[1],b[2],"<"$3">";}}}' | sort | uniq > wdHGNC.ID_to_EachPrev ## the terminal sort|uniq is to overcome a bug in the current HGNC report where the HGNC:35188 shows up twice in the same record of the withdrawn HGNC:21128 ID
+#cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,", ");for(i in a){split(a[i],b,"|");if(b[3]=="Approved")print b[1],b[2],"<"$3">";}}}' | sort | uniq > wdHGNC.ID_to_EachPrev ## the terminal sort|uniq is to overcome a bug in the current HGNC report where the HGNC:35188 shows up twice in the same record of the withdrawn HGNC:21128 ID
+cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,", ");for(i in a){split(a[i],b,"|");if(b[3]=="Approved")print b[1],"<"$3">";}}}' | sort | uniq > wdHGNC.ID_to_EachPrev ## the terminal sort|uniq is to overcome a bug in the current HGNC report where the HGNC:35188 shows up twice in the same record of the withdrawn HGNC:21128 ID
 echo "No. of withdrawn symbols replaced by new approved symbols = "$(cat wdHGNC.ID_to_EachPrev | wc -l)
 
 comm -12 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsAlias
 echo "No. of withdrawn symbols used as alias symbols = "$(cat wdHGNC.ID_to_EachPrev_AsAlias | wc -l)
 
-comm -13 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev2
-comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev_AsPrev
+#comm -13 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev2
+#comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev_AsPrev
+comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsPrev
 echo "No. of withdrawn symbols used as previous symbols = "$(cat wdHGNC.ID_to_EachPrev_AsPrev | wc -l)
 
-comm -13 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev.missing
+#comm -13 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev.missing
+comm -23 <(sort wdHGNC.ID_to_EachPrev) <(cat wdHGNC.ID_to_EachPrev_AsAlias wdHGNC.ID_to_EachPrev_AsPrev | sort | uniq) > wdHGNC.ID_to_EachPrev.missing
 echo "No. of missing withdrawn symbols = "$(cat wdHGNC.ID_to_EachPrev.missing | wc -l)
 echo "----------------------"
 ##################################################################################################################
