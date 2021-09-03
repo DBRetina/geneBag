@@ -249,76 +249,207 @@ echo "No. of missing withdrawn symbols after exclusion of LOC* IDs = "$(cat wdEn
 echo "-------------------------"
 
 ##################################################################################################################
-#### Gencode_human
-vcur=38
-vold=7; dateOld="Dec, 2010"; 
-echo "Explore the gene symbols ambiguity in Gencode $vcur"
-echo "=========================================="
+#### GENCODE genes
+echo "Explore the gene symbols ambiguity in GENCODE/Ensembl gene DB"
+echo "============================================================="
 ## Download
-if [ ! -f gencode.v${vcur}.annotation.gtf ];then
-  wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${vcur}/gencode.v${vcur}.annotation.gtf.gz
-  gunzip gencode.v${vcur}.annotation.gtf.gz
+wget -O ens_current.txt 'http://www.ensembl.org/biomart/martservice?query=<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Query>
+<Query  virtualSchemaName = "default" formatter = "TSV" header = "0" uniqueRows = "0" count = "" datasetConfigVersion = "0.6" completionStamp = "1" >
+            
+    <Dataset name = "hsapiens_gene_ensembl" interface = "default" >
+        <Attribute name = "ensembl_gene_id" />
+        <Attribute name = "external_gene_name" />
+        <Attribute name = "external_synonym" />
+    </Dataset>
+</Query>'
+completionStamp=$(tail -n1 ens_current.txt)
+if [ "$completionStamp" == "[success]" ]; then
+  echo "Ensembl biomart query was done successfuly";
+  head -n -1 ens_current.txt > ens_current.txt.temp
+  mv ens_current.txt.temp ens_current.txt
+else echo "Ensembl biomart query is incomplete. Repeat the download step";fi
+echo "GeneID" "ensSymbol" "Aliases" | tr ' ' '\t' > ens_current_aggSyn.txt
+cat ens_current.txt | awk 'BEGIN{FS=OFS="\t";S="|"}{if(!a[$1FS$2])a[$1FS$2]=$3;else a[$1FS$2]=a[$1FS$2]S$3;}END{for(i in a)print i,a[i]}' >> ens_current_aggSyn.txt
+
+## Find the version of most recent Gencode annotation
+curGTF=$(wget -q -O- http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/latest_release/ | \
+         grep -o "gencode.v[0-9]\+.chr_patch_hapl_scaff.annotation.gtf.gz" | head -n1)
+prefix="gencode.v";
+suffix=".chr_patch_hapl_scaff.annotation.gtf.gz";
+vcur=${curGTF#$prefix};
+vcur=${vcur%$suffix};
+#vLast=$(($vcur - 1))
+echo $vcur #$vLast
+
+# Download all assembly report to make assembly map to differentiate 1ry assembly from patches and alternative loci
+mkdir -p assemblies_reports && cd assemblies_reports
+wget -q -O- https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/ | \
+         grep -o "GCA_000001405.[0-9]\+_GRCh3[78].p[0-9]\+" | sort | uniq > assemblies.lst
+cat assemblies.lst | while read asm;do
+  wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/${asm}/${asm}_assembly_report.txt
+done
+
+for sym in M X Y $(seq 1 22);do echo "chr"$sym"|Primary Assembly" | tr '|' '\t';done > assembly_map
+for rep in *_assembly_report.txt;do cat $rep | awk 'BEGIN{FS=OFS="\t";}!/#/{print $5,$8}';done | sort | uniq >> assembly_map
+cd ../
+  
+# Dowanload all previous Gencode GTFs
+mkdir -p gencode_gtf && cd gencode_gtf
+genFTP="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human"
+for i in $(seq 20 ${vcur});do echo $i;
+  wget -O gencode.v${i}.ALL.GRCh38.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
+for i in $(seq 16 19);do echo $i;
+  wget -O gencode.v${i}.ALL.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
+for i in $(seq 5 15);do echo $i;
+  wget -O gencode.v${i}.CHR.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.annotation.gtf.gz 2>/dev/null;done
+wget -O gencode.v4.CHR.GRCh37.gtf.gz $genFTP/release_4/gencode_v4.annotation.GRCh37.gtf.gz 2>/dev/null;
+wget -O gencode.v3d.CHR.GRCh37.gtf.gz $genFTP/release_3d/gencode.v3d.gtf.gz 2>/dev/null;
+wget -O gencode.v3c.CHR.GRCh37.gtf.gz $genFTP/release_3c/gencode.v3c.annotation.GRCh37.gtf.gz 2>/dev/null;
+wget -O gencode.v3b.CHR.GRCh37.gtf.gz $genFTP/release_3b/gencode.v3b.annotation.GRCh37.gtf.gz 2>/dev/null;
+wget -O gencode.v2a.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2a.gtf.gz 2>/dev/null;
+wget -O gencode.v2.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2.gtf.gz 2>/dev/null;
+wget -O gencode.v1.CHR.GRCh37.gtf.gz $genFTP/release_1/gencode_data.rel1.v2.gtf.gz 2>/dev/null;
+
+r=2
+for i in 2 2a 3b 3c 3d $(seq 4 ${vcur});do
+  gtf=(gencode.v${i}.*.gtf.gz)
+  if [ -f "${gtf}" ];then
+    echo $gtf
+    gunzip ${gtf}
+    output=${gtf%.gtf.gz}
+    cat ${gtf%.gz} | awk -F"\t" '!/#/{if($3=="gene")print $1":"$4"-"$5";"$1";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=${i} -v rank=${r} 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank; }' | grep -v "^ENSGR" > $output.genes
+    echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
+    awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
+  fi
+  ((r=r+1));
+done
+
+
+# special processing for release 1
+# note: There are 4262 gene IDs in this release without gene symbols
+gtf=gencode.v1.CHR.GRCh37.gtf.gz
+gunzip ${gtf}
+> v1.start; > v1.end;
+cat ${gtf%.gz} | awk -F"\t" '!/#/{if($3=="exon")print $1";"$4";"$5";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=1 -v rank=1 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank >> "v1.start"; print id,$3 >> "v1.end"; }'
+cat v1.start | sort -t$'\t' -k1,1 -k6,6  | sort -t$'\t' -k1,1 -u > v1.start.uq
+cat v1.end | sort -t$'\t' -k1,1 -k2,2nr  | sort -t$'\t' -k1,1 -u > v1.end.uq
+output=${gtf%.gtf.gz}
+paste v1.start.uq v1.end.uq | awk 'BEGIN{FS=OFS="\t";}!/#/{print $1,$2,$3,$4,$5":"$6"-"$10,$5,$7,$8;}' | grep -v "^ENSGR" > $output.genes
+echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
+awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
+rm v1.end v1.start v1.end.uq v1.start.uq
+
+
+cur_Ann=(gencode.v${vcur}.*.genes.ann)
+head -n1 $cur_Ann > ../gencode.gene.track
+for ann in *.genes.ann;do tail -n+2 $ann;done | sort -t$'\t' -k1,1 -k8,8nr  >> ../gencode.gene.track
+cd ../
+
+## generate list of previous symbols for each gene ID (check to exclude entries from v1 with no gene symbols)
+tail -n+2 gencode.gene.track | sort -t$'\t' -k1,2 -u | sort -t$'\t' -k1,1 -k8,8nr | awk 'BEGIN{FS=OFS="\t"}{if($2)print $1,$2}' > gencode.gene.uniqIDs
+echo "GeneID" "ensSymbol" "Aliases" "PrevSymbols" | tr ' ' '\t' > ens_current_aggSyn_aggPrev.txt
+awk 'BEGIN{FS=OFS="\t";S="|"}FNR==NR{if(!a[$1])a[$1]=$2;else a[$1]=a[$1]S$2;next;}{prev=a[$1];n=index(prev,"|");if(n==0)prev="";print $0,substr(prev, n+1);}' gencode.gene.uniqIDs <(tail -n+2 ens_current_aggSyn.txt) >> ens_current_aggSyn_aggPrev.txt
+
+## update Ensembl gene symbols from current gencode annotation && add all annotation fields from the GTF
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;b[$1]=$3 FS $4 FS $5 FS $6 FS $7;next;}{if(a[$1])print $1,$2,a[$1],$3,$4,b[$1];else print $1,$2,"Not_in_Gencode",$3;}' gencode_gtf/$cur_Ann ens_current_aggSyn_aggPrev.txt > ens_current_aggSyn_aggPrev_genAnn.txt
+
+## Add Entrez IDs
+if [ ! -f gencode.v${vcur}.metadata.EntrezGene ];then
+  wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${vcur}/gencode.v${vcur}.metadata.EntrezGene.gz
+  gunzip gencode.v${vcur}.metadata.EntrezGene.gz
 fi
 
-## Generate a map of gene IDs to symbols and list of cross references to other DB
-echo "gene_id gene_type gene_name hgnc_id havana_gene" | tr ' ' '\t' > gencode.ann
-cat gencode.v${vcur}.annotation.gtf | awk -F"\t" '!/#/{if($3=="gene")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); key = substr($i, 1, n - 1); val = substr($i, n + 1, length(x));if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val;} } id = vars["gene_id"]; ann = vars["gene_type"]; name = vars["gene_name"]; hgnc = vars["hgnc_id"]; hav = vars["havana_gene"]; print id,ann,name,hgnc,hav; }' >> gencode.ann
+cur_gtf=(gencode_gtf/gencode.v${vcur}.*.gtf)
+cat $cur_gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; print id,trans; }' > gencode.trans_to_gene.map
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next}{ print $0, a[$2]}' gencode.v${vcur}.metadata.EntrezGene gencode.trans_to_gene.map > gencode.trans_to_entrez.map
+echo "GeneID EntrezGene" | tr ' ' '\t' > gencode.gene_to_entrez.map
+cat gencode.trans_to_entrez.map | awk 'BEGIN{FS="[.\t]";OFS="\t"}{print $1,$5}' | sort | uniq >> gencode.gene_to_entrez.map
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next;}{$7=a[$1] FS $7;print $0;}' gencode.gene_to_entrez.map ens_current_aggSyn_aggPrev_genAnn.txt > ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt
+gencode_master="ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt"
 
-gencode_tot=$(tail -n+2 gencode.ann | wc -l)
-gencode_IDs=$(tail -n+2 gencode.ann | awk 'BEGIN{FS="\t";}{print $1}' | sort | uniq | wc -l)
-gencode_sym=$(tail -n+2 gencode.ann | awk 'BEGIN{FS="\t";}{print $3}' | sort | uniq | wc -l)
-if (( gencode_tot != gencode_IDs));then echo "WARNING: The are $gencode_tot IDs in gencode annotation but only $gencode_IDs are uniq. There are gencode genes with duplicate IDs";fi
-PAR_Y=$(grep "_PAR_Y" gencode.ann | wc -l)
-echo "If we considered the unversioned IDs, rhere are $PAR_Y duplicate IDs with the PAR_Y suffix for Y chromosome version of genes"
+## Problem exploration: Difference between Ensembl and gencode annotations
+# 1. Ensembl doesn't have symbols while Gencode does
+cat ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($2!=$3 && $3!="Not_in_Gencode")print}' > ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt ##  21606
+# 2. Ensembl IDs not found in Gencode annotation:
+# Example "ENSG00000274081" belongs to ALT_REF_LOCI. The Ensembl website states that its 1st transcript is part of the Gencode basic annotation
+head -n1 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$4}' > ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt
+tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($3=="Not_in_Gencode")print $1,$2,$4}' >> ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt ## 123
+# 3. Gencode IDs not found in Ensembl annotation
+tail -n+2 gencode_gtf/$cur_Ann | awk -F"\t" '{print $1}' | sort > id.gen  ## 67005
+tail -n+2 ens_current_aggSyn_aggPrev.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
+comm -23 id.gen id.ens > id.gen.sp  ## 0  ##i.e. all gencode IDs present in ensembl
+
+## generate a list of symbols for discontinued gene IDs
+head -n1 gencode.gene.track > gencode.gene.discontinued
+tail -n+2 gencode.gene.track | grep -v ^OTTHUMG | grep -v -Fwf <(tail -n+2 ens_current_aggSyn.txt | cut -f1) | sort -t$'\t' -k1,2 -u >> gencode.gene.discontinued
+
+#----------
+## Generate a map of gene IDs to symbols
+echo "GeneID" "Symbol" | tr ' ' '\t' > gencodePrim.ID_to_Current
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly")print $1,"<"$3">"}' >> gencodePrim.ID_to_Current ## 60665
+
+## Generate a map of gene IDs to symbols and each one of the alias
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$4}' > gencodePrim.ID_to_EachAlias
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $4!="" && $10=="Primary Assembly")print $1,$4}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> gencodePrim.ID_to_EachAlias
+
+## Generate a map of gene IDs to symbols and each one of the previous symbols
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$5}' > gencodePrim.ID_to_EachPrev
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $5!="" && $10=="Primary Assembly")print $1,$5}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> gencodePrim.ID_to_EachPrev
+
+## Generate a map for discontinued genes IDs
+echo "GeneID" "Symbol" | tr ' ' '\t' > gencodePrim.ID_to_discontinued
+tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{if($2!="" && $6=="Primary Assembly")print $1,"<"$2">"}' >> gencodePrim.ID_to_discontinued
+
+## check for repeated symbols in the same gene record
+cat gencodePrim.ID_to_Current gencodePrim.ID_to_EachAlias | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.01.Alias_symbols_matching_current_symbols
+cat gencodePrim.ID_to_Current gencodePrim.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.02.Previous_symbols_matching_current_symbols
+cat gencodePrim.ID_to_EachAlias gencodePrim.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.03.Previous_symbols_matching_alias_symbols
+
+wc -l Gencodesame.*_matching_*_symbols
+
+## Identify genes with ambiguous alias (the alias is ambiguous if it matches another alias, previous or current gene symbol)
+# create list of all gene symbols
+tail -n+2 gencodePrim.ID_to_Current | awk -F"\t" '{print $2}' | sort > gencodePrim.Symbols
+# create list of all alias symbols
+tail -n+2 gencodePrim.ID_to_EachAlias | awk -F "\t" '{print $2}' | sort > gencodePrim.Alias
+# create list of all previous symbols
+tail -n+2 gencodePrim.ID_to_EachPrev | awk -F "\t" '{print $2}' | sort > gencodePrim.Prev
+# create list of withdrawn symbols
+tail -n+2 gencodePrim.ID_to_discontinued  | awk -F "\t" '{print $2}' | sort > gencodePrim.discontinued
 
 
-gencode_status=""
-> gencode.ambiguous_report
-if (( gencode_sym != gencode_IDs));then gencode_status="WARNING: There are duplicate gene symbols in the current gencode annotation.";
-  tail -n+2 gencode.ann | awk -F"\t" '{print $3}' | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr > gencode.ambiguous_freq
-  gencode_dedup_ids=$(cat gencode.ambiguous_freq | awk '{a+=$1}END{print a}')
-  gencode_dedup_sym=$(wc -l gencode.ambiguous_freq)
-  echo "There are $gencode_dedup_sym symbols assigned to $gencode_dedup_ids genes" > gencode.ambiguous_report
-  echo "Here are the most ambiguous symbols in the current gencode annotation:" >> gencode.ambiguous_report
-  head gencode.ambiguous_freq >> gencode.ambiguous_report
-else gencode_status="There are no duplicate gene symbols in the current gencode annotation.";fi
-echo "$gencode_status The current gencode annotation have $gencode_IDs IDs and corresponding $gencode_sym symbols."
-cat gencode.ambiguous_report
-echo "-------------------------"
-echo Note: Gencode annotation files do not have gene information about gene alias or previous gene symbols.
-echo "-------------------------"
-
-echo "Compare Gencode v${vcur} versus v${vold}"
-echo "=========================================="
-if [ ! -f gencode.v${vold}.annotation.gtf ];then
-  wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${vold}/gencode.v${vold}.annotation.gtf.gz
-  gunzip gencode.v${vold}.annotation.gtf.gz
-fi
-
-echo "gene_id gene_type gene_name hgnc_id havana_gene" | tr ' ' '\t' > gencode.oldAnn
-cat gencode.v${vold}.annotation.gtf | awk -F"\t" '!/#/{if($3=="gene")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); key = substr($i, 1, n - 1); val = substr($i, n + 1, length(x));if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val;} } id = vars["gene_id"]; ann = vars["gene_type"]; name = vars["gene_name"]; hgnc = vars["hgnc_id"]; hav = vars["havana_gene"]; print id,ann,name,hgnc,hav; }' >> gencode.oldAnn
-
-genOld_tot=$(tail -n+2 gencode.oldAnn | wc -l)
-echo "While Gencode ${vcur} has $gencode_tot genes, Gencode ${vold} had $genOld_tot genes"
-
-head -n1 gencode.ann | awk 'BEGIN{FS=OFS="\t"}{$1=$1 FS "version";print}' > gencode.ann2
-tail -n+2 gencode.ann | sed 's/\./|/' | tr "|" "\t" >> gencode.ann2
-tail -n+2 gencode.ann2 | awk -F"\t" '{print $1}' | sort | uniq > gen_${vcur}.IDs
-
-head -n1 gencode.oldAnn | awk 'BEGIN{FS=OFS="\t"}{$1=$1 FS "version";print}' > gencode.oldAnn2
-tail -n+2 gencode.oldAnn | sed 's/\./|/' | tr "|" "\t" >> gencode.oldAnn2
-tail -n+2 gencode.oldAnn2 | awk -F"\t" '{print $1}' | sort | uniq > gen_${vold}.IDs
-
-echo "After exclusion of duplicate Y chromosome IDs, we have 3 categories of IDs"
-echo "shared IDs in both :" $(comm -12 gen_${vcur}.IDs gen_${vold}.IDs | wc -l) ## 43531 shared IDs
-echo "novel IDs in ${vcur}:" $(comm -23 gen_${vcur}.IDs gen_${vold}.IDs | wc -l) ## 17074 novel IDs
-echo "discontinued IDs in ${vold}:" $(comm -13 gen_${vcur}.IDs gen_${vold}.IDs | wc -l) ## 7551 discontinued IDs
+## stats
+echo "Gencode official symbols        = " $(cat gencodePrim.Symbols | wc -l)        ## 60664
+echo "Gencode(Ensembl) alias symbols  = " $(cat gencodePrim.Alias | wc -l)          ## 54944
+echo "Gencode previous symbols        = " $(cat gencodePrim.Prev | wc -l)           ## 80774
+echo "Gencode discontinued symbols    = " $(cat gencodePrim.discontinued | wc -l)   ## 38409
 
 
-echo "gene_id version.${vold} symbol.${vold} version.${vcur} symbol.${vcur}" | tr " " "\t" > gencode.v${vold}.vs.v${vcur}
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2 FS $4;next;}{if(a[$1]!="")print $1,$2,$4,a[$1]}' <(tail -n+2 gencode.ann2) <(tail -n+2 gencode.oldAnn2) >> gencode.v${vold}.vs.v${vcur}
-updated_sym=$(tail -n+2 gencode.${vold}.vs.${vcur} | awk -F"\t" '{if($3!=$5)a+=1}END{print a}') ## 22402
-echo "Among the gene with shared IDs, $updated_sym has updated gene symbols"
+## Gene ambiguity venn diagram
+cat gencodePrim.Symbols | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.01.Current_symbols_matching_other_current_symbols
+cat gencodePrim.Alias | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.02.Alias_symbols_matching_other_alias_symbols
+comm -12 <(cat gencodePrim.Alias | uniq) <(cat gencodePrim.Symbols | uniq) > Gencode.03.Alias_symbols_matching_current_symbols
+cat gencodePrim.Prev | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.04.Previous_symbols_matching_other_previous_symbols
+comm -12 <(cat gencodePrim.Prev | uniq) <(cat gencodePrim.Symbols | uniq) > Gencode.05.Previous_symbols_matching_current_symbols
+comm -12 <(cat gencodePrim.Prev | uniq) <(cat gencodePrim.Alias | uniq)  > Gencode.06.Previous_symbols_matching_alias_symbols
+cat gencodePrim.discontinued | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.07.Discontinued_symbols_matching_other_discontinued_symbols
+comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Symbols | uniq) > Gencode.08.Discontinued_symbols_matching_current_symbols
+comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Alias | uniq) > Gencode.09.Discontinued_symbols_matching_alias_symbols
+
+wc -l Gencode.*_matching_*_symbols
+
+cat gencodePrim.{Symbols,Alias,Prev,discontinued} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > Gencode.ambiguous_freq
+cat Gencode.ambiguous_freq | awk '{print $2}' | grep -Fwf - <(cat gencodePrim.ID_to_{Current,EachAlias,EachPrev,discontinued}) | sort -t$'\t' -k2,2 >  gencodePrim.ambiguous.temp
+#echo "GeneID" "Symbol" "status" "Synonyms" "Release_discontinued" "New_replace_ID" "New_replace_Symbol" "replace_Mapping_score" | tr ' ' '\t' > gencodePrim.complete_withdrawn.temp
+#cat ens_current_aggSyn.txt | awk 'BEGIN{FS=OFS="\t";}{if(!$2)$2="-";if(!$3)$3="-"; print $1,$2,"Current",$3,"-","-","-","-"}' >> gencodePrim.complete_withdrawn.temp
+#tail -n+2 gencode.gene.history.idmap.details | awk 'BEGIN{FS=OFS="\t";}{status="";if($3=="-")status="discontinued";else if($7=="<discontinued>")status="replaced then discontinued";else if($7=="<replaced>")status="replaced"; print $1,$2,status,"-",$5,$3,$4,$6;}' >> gencodePrim.complete_withdrawn.temp
+cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > gencodePrim.complete_withdrawn.temp
+cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly") print $1,$3,"Current",$4,$5,"-"}' >> gencodePrim.complete_withdrawn.temp
+tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,"discontinued","-","-","-";}' >> gencodePrim.complete_withdrawn.temp
+
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > Gencode.ambiguous
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' gencodePrim.complete_withdrawn.temp gencodePrim.ambiguous.temp | sort | uniq >> Gencode.ambiguous
 
 ##################################################################################################################
 ##################################################################################################################
@@ -334,14 +465,12 @@ echo "Approved HGNC genes can be calssified as:"
 tail -n+2 hgnc_complete_set.txt | awk -F"\t" '{if($6=="Approved")print $4 " - " $5}' | sort | uniq -c 
 
 ## Generate a map of approved HGNC gene IDs to dbXrefs
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$19,$20,$9,$11}' > hgnc_approved.map ## hgnc_id symbol  entrez_id       ensembl_gene_id alias_symbol    prev_symbol
-cat hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($6=="Approved")print $1,$2,$19,$20,$9,$11}' >> hgnc_approved.map
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$19,$20,$9,$11,$4 " - " $5}' > hgnc_approved.map ## hgnc_id symbol  entrez_id   ensembl_gene_id    alias_symbol    prev_symbol    locus_group-locus_type(i.e. gene_type)
+cat hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($6=="Approved")print $1,$2,$19,$20,$9,$11,$4 " - " $5}' >> hgnc_approved.map
  
 ## Stats
-# tail -n+2 hgnc_approved.map | awk -F"\t" '{a+=1;if($3!="")b+=1;if($4!="")c+=1;if($5!="")d+=1;if($6!="")e+=1;}END{print "hgnc_id=",a,"entrez_id=",b,"ensembl_id=",c,"alias_symbol=",d,"prev_symbol=",e}'  ## hgnc_id= 42181 entrez_id= 42110 ensembl_id= 39199 alias_symbol= 21740 prev_symbol= 12049
-tail -n+2 hgnc_approved.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;if($5!="")d+=1;if($6!="")e+=1;}END{print "There are "a" approved HGNC ids with "d" aliases and "e" previous symbols", "They are cross referenced with:", "Entrez IDs = "b, "Ensembl IDs = "c}' 
+tail -n+2 hgnc_approved.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" approved HGNC ids.", "They are cross referenced with:", "Entrez IDs = "b, "Ensembl IDs = "c}' 
 tail -n+2 hgnc_approved.map | awk -F"\t" '{if($3!="" && $4!="")a+=1;}END{print "HGNC genes with entrez and ensembl ids =",a}'  ## hgnc_id with entrez and ensembl ids = 39578
-#tail -n+2 hgnc_approved.map | awk -F"\t" '{a[$2]=1;if($3!="")b[$3]=1;if($4!="")c[$4]=1;}END{print "uniq_symb=",length(a),"uniq_entrez=",length(b),"uniq_ens=",length(c)}' ## uniq_symb= 42181 uniq_entrez= 42110 uniq_ens= 39196
 
 
 
@@ -368,44 +497,29 @@ grep "HGNC:" Nomenclature_status_NA | wc -l     ## 0
 grep "Ensembl:" Nomenclature_status_NA | wc -l  ## 1898
 
 ## Generate a map of gene IDs to dbXrefs
-head -n1 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{print $2,$3,"HGNC","Ensembl","MIM",$5}' > Homo_sapiens.gene_info.map ## GeneID  Symbol  HGNC    Ensembl MIM     Synonyms
-tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6!="-")print $2,$3,$6,$5}' | awk 'BEGIN{FS=OFS="\t"}{ delete vars; split($3,a,"|");for(i in a) { n = index(a[i], ":"); if(n) { x = substr(a[i], n + 1); key = substr(a[i], 1, n - 1); val = substr(a[i], n + 1, length(x)); if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val; } } MIM = vars["MIM"]; HGNC = vars["HGNC"]; Ensembl = vars["Ensembl"]; print $1,$2,HGNC,Ensembl,MIM,$4; }' >> Homo_sapiens.gene_info.map
-tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6=="-")print $2,$3,"","","",$5}' >> Homo_sapiens.gene_info.map ## $6 = dbXrefs
+head -n1 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{print $2,$3,"HGNC","Ensembl",$5,$10}' > Homo_sapiens.gene_info.map ## GeneID  Symbol  HGNC    Ensembl     Synonyms    type_of_gene
+tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6!="-")print $2,$3,$6,$5,$10}' | awk 'BEGIN{FS=OFS="\t"}{ delete vars; split($3,a,"|");for(i in a) { n = index(a[i], ":"); if(n) { x = substr(a[i], n + 1); key = substr(a[i], 1, n - 1); val = substr(a[i], n + 1, length(x)); if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val; } } HGNC = vars["HGNC"]; Ensembl = vars["Ensembl"]; print $1,$2,HGNC,Ensembl,$4,$5; }' >> Homo_sapiens.gene_info.map
+tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6=="-")print $2,$3,"","",$5,$10}' >> Homo_sapiens.gene_info.map ## $6 = dbXrefs
 
 ## Stats
-#tail -n+2 Homo_sapiens.gene_info.map | awk -F"\t" '{a+=1;if($3!="")b+=1;if($4!="")c+=1;if($5!="")d+=1;if($6!="-")e+=1;}END{print "entrez_id=",a,"hgnc_id=",b,"ensembl_id=",c,"mim_id=",d,"alias_symbol=",e}'  ## entrez_id= 61622 hgnc_id= 42106 ensembl_id= 35063 mim_id= 17648 alias_symbol= 26915
-tail -n+2 Homo_sapiens.gene_info.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;if($5!="")d+=1;if($6!="-")e+=1;}END{print "There are "a" current Entrez ids with "e" aliases", "They are cross referenced with:", "HGNC IDs = "b, "Ensembl IDs = "c, "MIM IDs = "d}'
+tail -n+2 Homo_sapiens.gene_info.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" current Entrez ids.", "They are cross referenced with:", "HGNC IDs = "b, "and Ensembl IDs = "c}'
 tail -n+2 Homo_sapiens.gene_info.map | awk -F"\t" '{if($3!="" && $4!="")a+=1;}END{print "Entrez genes with hgnc and ensembl IDs =",a}'  ## entrez_id with hgnc and ensembl ids= 33165
-#tail -n+2 Homo_sapiens.gene_info.map | awk -F"\t" '{a[$2]=1;if($3!="")b[$3]=1;if($4!="")c[$4]=1;}END{print "uniq_symb=",length(a),"uniq_hgnc=",length(b),"uniq_ens=",length(c)}' ## uniq_symb= 61563 uniq_hgnc= 42106 uniq_ens= 34966
 
 
 
 #### Gencode_human
-if [ ! -f gencode.v${vcur}.metadata.EntrezGene ];then
-  wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_${vcur}/gencode.v${vcur}.metadata.EntrezGene.gz
-  gunzip gencode.v${vcur}.metadata.EntrezGene.gz
-fi
-
 ## Explore
 # Explore types of genes:
 echo "Current Gencode genes can be calssified as:"
-tail -n+2 gencode.ann | awk 'BEGIN{FS="\t";}{print $2}' | sort | uniq -c
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $6}' | sort | uniq -c
 
-## Generate a map of approved Gencide gene IDs to dbXrefs
-echo "gene_id transcript_id gene_name hgnc_id havana_gene" | tr ' ' '\t' > gencode.trans_ann
-cat gencode.v${vcur}.annotation.gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; name = vars["gene_name"]; hgnc = vars["hgnc_id"]; hav = vars["havana_gene"]; print id,trans,name,hgnc,hav; }' >> gencode.trans_ann
-
-head -n1 gencode.trans_ann | awk 'BEGIN{FS=OFS="\t"}{print $0,"EntrezGene"}' > gencode.trans_ann.map
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next}{ print $0, a[$2]}' gencode.v${vcur}.metadata.EntrezGene <(tail -n+2 gencode.trans_ann) >> gencode.trans_ann.map
-
-cat gencode.trans_ann.map | awk 'BEGIN{FS=OFS="\t"}{print $1,$3,$4,$6}' | uniq > gencode.gene_ann.map
+## Generate a map of Gencode gene IDs on the Primary Assembly to dbXrefs
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$7,$8,$4,$5,$6}' > gencode_primary.map ## GeneID Symbol  EntrezGene   HGNC    Aliases    PrevSymbols    gene_type
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $1,$3,$7,$8,$4,$5,$6}' >> gencode_primary.map
 
 ## Stats
-#tail -n+2 gencode.gene_ann.map | awk -F"\t" '{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "ensembl_id=",a,"hgnc_id=",b,"entrez_id=",c}'  ## ensembl_id= 60656 hgnc_id= 38596 entrez_id= 25600
-tail -n+2 gencode.gene_ann.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" current Ensembl ids", "They are cross referenced with:", "HGNC IDs = "b, "Entrez IDs = "c}'  
-tail -n+2 gencode.gene_ann.map | awk -F"\t" '{if($3!="" && $4!="")a+=1;}END{print "Gencode gene with hgnc and entrez  ids =",a}'  ## gencode_id with hgnc and entrez  ids= 24528
-#tail -n+2 gencode.v35.map | awk -F"\t" '{a[$2]=1;if($3!="")b[$3]=1;if($4!="")c[$4]=1;}END{print "uniq_symb=",length(a),"uniq_hgnc=",length(b),"uniq_entrez=",length(c)}' ## uniq_symb= 59609 uniq_hgnc= 38543 uniq_entrez= 25532
-
+tail -n+2 gencode_primary.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" current Ensembl ids", "They are cross referenced with:", "HGNC IDs = "b, "Entrez IDs = "c}'  
+tail -n+2 gencode_primary.map | awk -F"\t" '{if($3!="" && $4!="")a+=1;}END{print "Gencode gene with hgnc and entrez  ids =",a}'  ## gencode_id with hgnc and entrez  ids= 24528
 ##################################################################################################################
 ##################################################################################################################
 ##################################################################################################################
