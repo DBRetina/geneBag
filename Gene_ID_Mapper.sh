@@ -6,28 +6,32 @@
 ##########################
 
 #### HGNC 
-echo "Explore the gene symbols ambiguity in HGNC"
-echo "=========================================="
+echo "## Explore the gene symbols ambiguity in HGNC"
+echo "============================================="
 ## Download HGNC dataset (link in the "Statistics & download files" page)
 if [ ! -f hgnc_complete_set.txt ];then 
   wget ftp://ftp.ebi.ac.uk/pub/databases/genenames/new/tsv/hgnc_complete_set.txt;fi
 if [ ! -f withdrawn.txt ];then
   wget http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt;fi
 
-echo "Basic check of HGNC Ids:"
-echo "-----------------------------"
+echo "1. Basic check of HGNC Ids:"
+echo "---------------------------"
 app_IDs=$(tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS="\t";}{print $1}' | sort | uniq | wc -l)
 app_tot=$(tail -n+2 hgnc_complete_set.txt | wc -l)
-if (( app_tot != app_IDs));then echo "WARNING: The are $app_tot IDs in the approved HGNC but only $app_IDs are uniq. The approved HGNC has duplicate IDs!!";fi
+if (( app_tot != app_IDs));then echo "WARNING: The are $app_tot IDs in the approved HGNC but only $app_IDs are uniq. The master HGNC dataset has duplicate IDs!!";
+else echo "OK! The master HGNC dataset has no duplicate IDs";fi
 nonApp=$(tail -n+2 hgnc_complete_set.txt | awk -F"\t" '{if($6!="Approved")print}' | wc -l)
-if (( nonApp > 0));then echo "WARNING: There are $nonApp non-approved records in the approved dataset";fi
+if (( nonApp > 0));then echo "WARNING: There are $nonApp non-approved records in the master HGNC dataset";
+else echo "OK! All records are approved in the master HGNC dataset";fi
 
 wd_IDs=$(tail -n+2 withdrawn.txt | awk 'BEGIN{FS="\t";}{print $1}' | sort | uniq | wc -l)
 wd_tot=$(tail -n+2 withdrawn.txt | wc -l)
-if (( wd_tot != wd_IDs));then echo "WARNING: The are $wd_tot IDs in the withdrawn HGNC dataset but only $wd_IDs are uniq. The withdrawn HGNC has duplicate IDs!!";fi
+if (( wd_tot != wd_IDs));then echo "WARNING: The are $wd_tot IDs in the withdrawn HGNC dataset but only $wd_IDs are uniq. The withdrawn HGNC dataset has duplicate IDs!!";
+else echo "OK! The withdrawn HGNC dataset has no duplicate IDs";fi
 
 echo "Basic check is done"
 echo "-------------------"
+
 ## Generate a map of gene IDs to symbols
 head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2}' > hgnc.ID_to_Current
 tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,"<"$2">"}' >> hgnc.ID_to_Current 
@@ -41,7 +45,7 @@ head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$11}' > hgnc.
 tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($11!="")print $1,$11}' | sed 's/"//g' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> hgnc.ID_to_EachPrev  
 
 ## Generate a map for genes IDs withdrawn without approved replacement
-## Known limitation: We are considering genes replaced by withdrawn genes to be discontinued. This is a possiblity that this new withdrawn gene is also replaced by new approved gene 
+## Known limitation: We are considering genes replaced by withdrawn genes to be discontinued. There is a possiblity that this new withdrawn gene is also replaced by new approved gene 
 ##                   but I do not see any example in the current DB (if a gene is replaced, the new genes (column 4) are either "Approved" or "Entry Withdrawn" but not "Merged/Split") 
 head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3}' > hgnc.ID_to_discontinued
 cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Entry Withdrawn")print $1,"<"$3">"}' >> hgnc.ID_to_discontinued;
@@ -51,12 +55,18 @@ cat withdrawn.txt | grep -v "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged
 head -n1 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3}' > hgnc.ID_to_replaced 
 cat withdrawn.txt | grep "Approved" | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split")print $1,"<"$3">"}' >> hgnc.ID_to_replaced 
 
-## check for repeated symbols in the same gene record
+## check for repeated symbols within the same gene record 
+echo "2. check for repeated symbols within the same gene record:"
+echo "----------------------------------------------------------"
 cat hgnc.ID_to_Current hgnc.ID_to_EachAlias | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.01.Alias_symbols_matching_current_symbols
 cat hgnc.ID_to_Current hgnc.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.02.Previous_symbols_matching_current_symbols
 cat hgnc.ID_to_EachAlias hgnc.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNCsame.03.Previous_symbols_matching_alias_symbols
 
 wc -l HGNCsame.*_matching_*_symbols 
+echo "Examples for these records (if any):"
+cat HGNCsame.*_matching_*_symbols | head
+echo "-------------------"
+
 
 ## Identify genes with ambiguous alias or previous symbol (the alias or previous symbol is ambiguous if it matches another alias, previous or current gene symbol)
 # create list of all gene symbols
@@ -71,11 +81,14 @@ tail -n+2 hgnc.ID_to_discontinued  | awk -F "\t" '{print $2}' | sort > hgnc.disc
 tail -n+2 hgnc.ID_to_replaced | awk -F "\t" '{print $2}' | sort > hgnc.replaced
 
 ## stats
+echo "3. Basic statistics"
+echo "-------------------"
 echo "HGNC approved symbols     = " $(cat hgnc.Symbols | wc -l)        ## 42698
 echo "HGNC alias symbols        = " $(cat hgnc.Alias | wc -l)          ## 42347
 echo "HGNC previous symbols     = " $(cat hgnc.Prev | wc -l)           ## 15180
 echo "HGNC discontinued symbols = " $(cat hgnc.discontinued | wc -l)   ## 1826
 echo "HGNC replaced symbols     = " $(cat hgnc.replaced | wc -l)       ## 3314
+echo "-------------------"
 
 ## Gene ambiguity venn diagram
 cat hgnc.Symbols | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > HGNC.01.Current_symbols_matching_other_current_symbols
@@ -94,38 +107,38 @@ comm -12 <(cat hgnc.replaced | uniq) <(cat hgnc.Alias | uniq) > HGNC.13.Replaced
 comm -12 <(cat hgnc.replaced | uniq) <(cat hgnc.Prev | uniq) > HGNC.14.Replaced_symbols_matching_previous_symbols
 comm -12 <(cat hgnc.replaced | uniq) <(cat hgnc.discontinued | uniq) > HGNC.15.Replaced_symbols_matching_discontinued_symbols
 
+echo "4. Gene ambiguity venn diagram"
+echo "------------------------------"
 wc -l HGNC.*_matching_*_symbols 
 
-cat hgnc.{Symbols,Alias,Prev,discontinued,replaced} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > HGNC.ambiguous_freq
-cat HGNC.ambiguous_freq | awk '{print $2}' | grep -Fwf - <(cat hgnc.ID_to_{Current,EachAlias,EachPrev,discontinued,replaced}) | sort -t$'\t' -k2,2 >  hgnc.ambiguous.temp 
+cat hgnc.{Symbols,Alias,Prev,discontinued,replaced} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > HGNC.ambiguous_freq.txt
+cat HGNC.ambiguous_freq.txt | awk '{print $2}' | grep -Fwf - <(cat hgnc.ID_to_{Current,EachAlias,EachPrev,discontinued,replaced}) | sort -t$'\t' -k2,2 >  hgnc.ambiguous.temp 
 head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$6,$9,$11,"new_symbol_ifReplaced"}' > hgnc.complete_withdrawn.temp
 tail -n+2 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$6,$9,$11,"-"}' >> hgnc.complete_withdrawn.temp
 tail -n+2 withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$2,"-","-",$4}' >> hgnc.complete_withdrawn.temp
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$2,$6,$9,$11,"new_symbol_ifReplaced"}' > HGNC.ambiguous
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' hgnc.complete_withdrawn.temp hgnc.ambiguous.temp | sort | uniq >> HGNC.ambiguous
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$2,$6,$9,$11,"new_symbol_ifReplaced"}' > HGNC.ambiguous.tab
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' hgnc.complete_withdrawn.temp hgnc.ambiguous.temp | sort | uniq >> HGNC.ambiguous.tab
 
-echo "HGNC has "$(cat HGNC.ambiguous_freq | wc -l)" ambigious symbols causing "$(tail -n+2 HGNC.ambiguous | wc -l)" ambigious records."
+echo " "
+echo "HGNC has "$(cat HGNC.ambiguous_freq.txt | wc -l)" ambigious symbols causing "$(tail -n+2 HGNC.ambiguous.tab | wc -l)" ambigious records."
 echo "Here are the most 10 ambiguous symbols and how many time do they show up among all gene symbols:"
-head HGNC.ambiguous_freq
+head HGNC.ambiguous_freq.txt
 echo "-------------------------"
 
-echo "Track replaced HGNC ID"
-echo "----------------------"
-#cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,", ");for(i in a){split(a[i],b,"|");if(b[3]=="Approved")print b[1],b[2],"<"$3">";}}}' | sort | uniq > wdHGNC.ID_to_EachPrev ## the terminal sort|uniq is to overcome a bug in the current HGNC report where the HGNC:35188 shows up twice in the same record of the withdrawn HGNC:21128 ID
+echo "5. Tracking of replaced HGNC IDs"
+echo "--------------------------------"
 cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,", ");for(i in a){split(a[i],b,"|");if(b[3]=="Approved")print b[1],"<"$3">";}}}' | sort | uniq > wdHGNC.ID_to_EachPrev ## the terminal sort|uniq is to overcome a bug in the current HGNC report where the HGNC:35188 shows up twice in the same record of the withdrawn HGNC:21128 ID
 echo "No. of withdrawn symbols replaced by new approved symbols = "$(cat wdHGNC.ID_to_EachPrev | wc -l)
 
 comm -12 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsAlias
-echo "No. of withdrawn symbols used as alias symbols = "$(cat wdHGNC.ID_to_EachPrev_AsAlias | wc -l)
+echo "No. of withdrawn symbols used as alias symbols for the new approved gene = "$(cat wdHGNC.ID_to_EachPrev_AsAlias | wc -l)
 
-#comm -13 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev2
-#comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev_AsPrev
 comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsPrev
-echo "No. of withdrawn symbols used as previous symbols = "$(cat wdHGNC.ID_to_EachPrev_AsPrev | wc -l)
+echo "No. of withdrawn symbols used as previous symbols for the new approved gene = "$(cat wdHGNC.ID_to_EachPrev_AsPrev | wc -l)
 
 #comm -13 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev2) > wdHGNC.ID_to_EachPrev.missing
 comm -23 <(sort wdHGNC.ID_to_EachPrev) <(cat wdHGNC.ID_to_EachPrev_AsAlias wdHGNC.ID_to_EachPrev_AsPrev | sort | uniq) > wdHGNC.ID_to_EachPrev.missing
-echo "No. of missing withdrawn symbols = "$(cat wdHGNC.ID_to_EachPrev.missing | wc -l)
+echo "No. of missing withdrawn symbols (i.e. the withdrawn sybmol does not show up in the new approved gene record) = "$(cat wdHGNC.ID_to_EachPrev.missing | wc -l)
 echo "----------------------"
 ##################################################################################################################
 #### NCBI genes
