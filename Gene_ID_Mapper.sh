@@ -332,7 +332,7 @@ completionStamp=$(tail -n1 ens_current.txt)
 if [ "$completionStamp" == "[success]" ]; then
   echo "Ensembl biomart query was done successfuly";
   head -n -1 ens_current.txt > ens_current.txt.temp
-  mv ens_current.txt.temp ens_current.txt
+  cat ens_current.txt.temp | sort | uniq > ens_current.txt
 else echo "Ensembl biomart query is incomplete. Repeat the download step";fi
 echo "GeneID" "ensSymbol" "Aliases" | tr ' ' '\t' > ens_current_aggSyn.txt
 cat ens_current.txt | awk 'BEGIN{FS=OFS="\t";S="|"}{if(!a[$1FS$2])a[$1FS$2]=$3;else a[$1FS$2]=a[$1FS$2]S$3;}END{for(i in a)print i,a[i]}' >> ens_current_aggSyn.txt
@@ -411,13 +411,20 @@ head -n1 $cur_Ann > ../gencode.gene.track
 for ann in *.genes.ann;do tail -n+2 $ann;done | sort -t$'\t' -k1,1 -k8,8nr  >> ../gencode.gene.track
 cd ../
 
-## generate list of previous symbols for each gene ID (check to exclude entries from v1 with no gene symbols)
-tail -n+2 gencode.gene.track | sort -t$'\t' -k1,2 -u | sort -t$'\t' -k1,1 -k8,8nr | awk 'BEGIN{FS=OFS="\t"}{if($2)print $1,$2}' > gencode.gene.uniqIDs
-echo "GeneID" "ensSymbol" "Aliases" "PrevSymbols" | tr ' ' '\t' > ens_current_aggSyn_aggPrev.txt
-awk 'BEGIN{FS=OFS="\t";S="|"}FNR==NR{if(!a[$1])a[$1]=$2;else a[$1]=a[$1]S$2;next;}{prev=a[$1];n=index(prev,"|");if(n==0)prev="";print $0,substr(prev, n+1);}' gencode.gene.uniqIDs <(tail -n+2 ens_current_aggSyn.txt) >> ens_current_aggSyn_aggPrev.txt
-
 ## update Ensembl gene symbols from current gencode annotation && add all annotation fields from the GTF
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;b[$1]=$3 FS $4 FS $5 FS $6 FS $7;next;}{if(a[$1])print $1,$2,a[$1],$3,$4,b[$1];else print $1,$2,"Not_in_Gencode",$3;}' gencode_gtf/$cur_Ann ens_current_aggSyn_aggPrev.txt > ens_current_aggSyn_aggPrev_genAnn.txt
+ awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;b[$1]=$3 FS $4 FS $5 FS $6 FS $7;next;}{if(a[$1])print $1,$2,a[$1],$3,b[$1];else print $1,$2,"Not_in_Gencode",$3;}' gencode_gtf/$cur_Ann ens_current_aggSyn.txt > ens_current_aggSyn_genAnn.txt
+
+## generate a uniqe list of previous symbols for each gene ID (check to exclude entries from v1 with no gene symbols)
+head -n1 gencode.gene.track > gencode.gene.uniqIDs
+tail -n+2 gencode.gene.track | sort -t$'\t' -k1,2 -u | sort -t$'\t' -k1,1 -k8,8nr | awk 'BEGIN{FS=OFS="\t"}{if($2)print}' >> gencode.gene.uniqIDs
+cat gencode.gene.uniqIDs |  awk -v vcur=$vcur 'BEGIN{FS=OFS="\t"}{if($7!=vcur)print}' > gencode.gene.uniqIDs.notLast
+head -n1 gencode.gene.uniqIDs.notLast > gencode.gene.uniqIDs.notLast.noCur
+awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1 FS $3]=1;next}{if(!a[$1 FS $2])print}' ens_current_aggSyn_genAnn.txt gencode.gene.uniqIDs.notLast >> gencode.gene.uniqIDs.notLast.noCur
+awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1 FS $3]=1;next}{if(!a[$1 FS $2])print}' ens_current.txt gencode.gene.uniqIDs.notLast.noCur > gencode.gene.uniqIDs.notLast.noCur.noAlias
+echo "GeneID" "PrevSymbols" | tr ' ' '\t' > gencode.gene.aggPrev
+tail -n+2 gencode.gene.uniqIDs.notLast.noCur.noAlias | awk 'BEGIN{FS=OFS="\t";S="|"}{if(!a[$1])a[$1]=$2;else a[$1]=a[$1]S$2;}END{for(i in a)print i,a[i]}' >> gencode.gene.aggPrev
+awk 'BEGIN{FS=OFS="\t";S="|"}FNR==NR{a[$1]=$2;next}{$4=$4 FS a[$1];print}' gencode.gene.aggPrev ens_current_aggSyn_genAnn.txt > ens_current_aggSyn_aggPrev_genAnn.txt
+
 
 ## Add Entrez IDs
 if [ ! -f gencode.v${vcur}.metadata.EntrezGene ];then
@@ -433,15 +440,15 @@ cat gencode.trans_to_entrez.map | awk 'BEGIN{FS="[.\t]";OFS="\t"}{print $1,$5}' 
 awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next;}{$7=a[$1] FS $7;print $0;}' gencode.gene_to_entrez.map ens_current_aggSyn_aggPrev_genAnn.txt > ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt
 gencode_master="ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt"
 
-## generate a list of symbols for discontinued gene IDs
-head -n1 gencode.gene.track > gencode.gene.discontinued
-tail -n+2 gencode.gene.track | grep -v ^OTTHUMG | grep -v -Fwf <(tail -n+2 ens_current_aggSyn.txt | cut -f1) | sort -t$'\t' -k1,2 -u >> gencode.gene.discontinued
+
+## generate a list of symbols for discontinued gene IDs 
+cat gencode.gene.uniqIDs.notLast.noCur.noAlias | grep -v ^OTTHUMG | grep -v -Fwf <(tail -n+2 $gencode_master | cut -f1) > gencode.gene.discontinued
 
 
 #### Generate maps of gene IDs to symbols
 ## Generate a map of current gene IDs to official symbols
 echo "GeneID" "Symbol" | tr ' ' '\t' > gencodePrim.ID_to_Current
-tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly")print $1,"<"$3">"}' >> gencodePrim.ID_to_Current ## 60665
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $1,"<"$3">"}' >> gencodePrim.ID_to_Current ## 60665
 
 ## Generate a map of current gene IDs to aliases 
 head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$4}' > gencodePrim.ID_to_EachAlias
@@ -481,7 +488,7 @@ tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($3=
 echo "No of Ensembl IDs not found in Gencode annotation                   = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt | wc -l)       
 # 3. Gencode IDs not found in Ensembl annotation
 tail -n+2 gencode_gtf/$cur_Ann | awk -F"\t" '{print $1}' | sort > id.gen  ## 67005
-tail -n+2 ens_current_aggSyn_aggPrev.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
+tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
 comm -23 id.gen id.ens > id.gen.sp  ## 0  ##i.e. all gencode IDs present in ensembl
 missing_ids=$(cat id.gen.sp | wc -l)
 if [ $missing_ids -gt 0 ];then echo "These GENCODE IDS are missing from Ensembl annotation"; cat id.gen.sp;else echo "No GENCODE IDS are missing from Ensembl annotation";fi
@@ -493,8 +500,8 @@ echo "-------------------"
 echo "2. Basic statistics"
 echo "-------------------"
 echo "Gencode official symbols        = " $(cat gencodePrim.Symbols | wc -l)        ## 60664
-echo "Gencode(Ensembl) alias symbols  = " $(cat gencodePrim.Alias | wc -l)          ## 54944
-echo "Gencode previous symbols        = " $(cat gencodePrim.Prev | wc -l)           ## 80774
+echo "Gencode(Ensembl) alias symbols  = " $(cat gencodePrim.Alias | wc -l)          ## 54878
+echo "Gencode previous symbols        = " $(cat gencodePrim.Prev | wc -l)           ## 75118
 echo "Gencode discontinued symbols    = " $(cat gencodePrim.discontinued | wc -l)   ## 38409
 echo "-------------------"
 
