@@ -433,64 +433,92 @@ cat gencode.trans_to_entrez.map | awk 'BEGIN{FS="[.\t]";OFS="\t"}{print $1,$5}' 
 awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next;}{$7=a[$1] FS $7;print $0;}' gencode.gene_to_entrez.map ens_current_aggSyn_aggPrev_genAnn.txt > ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt
 gencode_master="ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt"
 
-## Problem exploration: Difference between Ensembl and gencode annotations
-# 1. Ensembl doesn't have symbols while Gencode does
-cat ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($2!=$3 && $3!="Not_in_Gencode")print}' > ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt ##  21606
-# 2. Ensembl IDs not found in Gencode annotation:
-# Example "ENSG00000274081" belongs to ALT_REF_LOCI. The Ensembl website states that its 1st transcript is part of the Gencode basic annotation
-head -n1 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$4}' > ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt
-tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($3=="Not_in_Gencode")print $1,$2,$4}' >> ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt ## 123
-# 3. Gencode IDs not found in Ensembl annotation
-tail -n+2 gencode_gtf/$cur_Ann | awk -F"\t" '{print $1}' | sort > id.gen  ## 67005
-tail -n+2 ens_current_aggSyn_aggPrev.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
-comm -23 id.gen id.ens > id.gen.sp  ## 0  ##i.e. all gencode IDs present in ensembl
-
 ## generate a list of symbols for discontinued gene IDs
 head -n1 gencode.gene.track > gencode.gene.discontinued
 tail -n+2 gencode.gene.track | grep -v ^OTTHUMG | grep -v -Fwf <(tail -n+2 ens_current_aggSyn.txt | cut -f1) | sort -t$'\t' -k1,2 -u >> gencode.gene.discontinued
 
-#----------
-## Generate a map of gene IDs to symbols
+
+#### Generate maps of gene IDs to symbols
+## Generate a map of current gene IDs to official symbols
 echo "GeneID" "Symbol" | tr ' ' '\t' > gencodePrim.ID_to_Current
 tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly")print $1,"<"$3">"}' >> gencodePrim.ID_to_Current ## 60665
 
-## Generate a map of gene IDs to symbols and each one of the alias
+## Generate a map of current gene IDs to aliases 
 head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$4}' > gencodePrim.ID_to_EachAlias
 tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $4!="" && $10=="Primary Assembly")print $1,$4}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> gencodePrim.ID_to_EachAlias
 
-## Generate a map of gene IDs to symbols and each one of the previous symbols
+## Generate a map of current gene IDs to previous symbols
 head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$5}' > gencodePrim.ID_to_EachPrev
 tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $5!="" && $10=="Primary Assembly")print $1,$5}' | awk 'BEGIN{FS="\t";OFS="\n";}{split($2,a,"|");for(i in a)print $1"\t<"a[i]">";}' >> gencodePrim.ID_to_EachPrev
 
-## Generate a map for discontinued genes IDs
+## Generate a map for genes IDs withdrawn to their symbols
 echo "GeneID" "Symbol" | tr ' ' '\t' > gencodePrim.ID_to_discontinued
 tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{if($2!="" && $6=="Primary Assembly")print $1,"<"$2">"}' >> gencodePrim.ID_to_discontinued
 
-## check for repeated symbols in the same gene record
+
+#### Generate lists of gene symbols
+## create list of all current symbols
+tail -n+2 gencodePrim.ID_to_Current | awk -F"\t" '{print $2}' | sort > gencodePrim.Symbols
+## create list of all alias symbols
+tail -n+2 gencodePrim.ID_to_EachAlias | awk -F "\t" '{print $2}' | sort > gencodePrim.Alias
+## create list of all previous symbols
+tail -n+2 gencodePrim.ID_to_EachPrev | awk -F "\t" '{print $2}' | sort > gencodePrim.Prev
+## create list of withdrawn symbols
+tail -n+2 gencodePrim.ID_to_discontinued  | awk -F "\t" '{print $2}' | sort > gencodePrim.discontinued
+
+
+#### Basic check
+echo "1. Basic check of Ensembl and gencode annotations:"
+echo "--------------------------------------------------"
+## Problem exploration: Difference between Ensembl and gencode annotations
+# 1. Ensembl doesn't have symbols while Gencode does
+cat ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($2!=$3 && $3!="Not_in_Gencode")print}' > ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt ##  21606
+echo "No of IDs where Ensembl doesn't have symbols while Gencode does     = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt | wc -l)       
+# 2. Ensembl IDs not found in Gencode annotation:
+# Example "ENSG00000274081" belongs to ALT_REF_LOCI. The Ensembl website states that its 1st transcript is part of the Gencode basic annotation
+head -n1 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$4}' > ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt
+tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($3=="Not_in_Gencode")print $1,$2,$4}' >> ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt ## 123
+echo "No of Ensembl IDs not found in Gencode annotation                   = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt | wc -l)       
+# 3. Gencode IDs not found in Ensembl annotation
+tail -n+2 gencode_gtf/$cur_Ann | awk -F"\t" '{print $1}' | sort > id.gen  ## 67005
+tail -n+2 ens_current_aggSyn_aggPrev.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
+comm -23 id.gen id.ens > id.gen.sp  ## 0  ##i.e. all gencode IDs present in ensembl
+missing_ids=$(cat id.gen.sp | wc -l)
+if [ $missing_ids -gt 0 ];then echo "These GENCODE IDS are missing from Ensembl annotation"; cat id.gen.sp;else echo "No GENCODE IDS are missing from Ensembl annotation";fi
+echo "Basic check is done"
+echo "-------------------"
+
+
+#### Basic statistics
+echo "2. Basic statistics"
+echo "-------------------"
+echo "Gencode official symbols        = " $(cat gencodePrim.Symbols | wc -l)        ## 60664
+echo "Gencode(Ensembl) alias symbols  = " $(cat gencodePrim.Alias | wc -l)          ## 54944
+echo "Gencode previous symbols        = " $(cat gencodePrim.Prev | wc -l)           ## 80774
+echo "Gencode discontinued symbols    = " $(cat gencodePrim.discontinued | wc -l)   ## 38409
+echo "-------------------"
+
+
+#### check for repeated symbols within the same gene record 
+echo "3. check for repeated symbols within the same gene record:"
+echo "----------------------------------------------------------"
 cat gencodePrim.ID_to_Current gencodePrim.ID_to_EachAlias | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.01.Alias_symbols_matching_current_symbols
 cat gencodePrim.ID_to_Current gencodePrim.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.02.Previous_symbols_matching_current_symbols
 cat gencodePrim.ID_to_EachAlias gencodePrim.ID_to_EachPrev | sort | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencodesame.03.Previous_symbols_matching_alias_symbols
 
 wc -l Gencodesame.*_matching_*_symbols
+echo "Examples for these records (if any):"
+cat Gencodesame.*_matching_*_symbols | head
+echo "-------------------"
 
+echo "4. Tracking of replaced HGNC IDs"
+echo "--------------------------------"
+echo "TO BE DONE"
+echo "----------------------"
+
+
+#### Gene ambiguity
 ## Identify genes with ambiguous alias (the alias is ambiguous if it matches another alias, previous or current gene symbol)
-# create list of all gene symbols
-tail -n+2 gencodePrim.ID_to_Current | awk -F"\t" '{print $2}' | sort > gencodePrim.Symbols
-# create list of all alias symbols
-tail -n+2 gencodePrim.ID_to_EachAlias | awk -F "\t" '{print $2}' | sort > gencodePrim.Alias
-# create list of all previous symbols
-tail -n+2 gencodePrim.ID_to_EachPrev | awk -F "\t" '{print $2}' | sort > gencodePrim.Prev
-# create list of withdrawn symbols
-tail -n+2 gencodePrim.ID_to_discontinued  | awk -F "\t" '{print $2}' | sort > gencodePrim.discontinued
-
-
-## stats
-echo "Gencode official symbols        = " $(cat gencodePrim.Symbols | wc -l)        ## 60664
-echo "Gencode(Ensembl) alias symbols  = " $(cat gencodePrim.Alias | wc -l)          ## 54944
-echo "Gencode previous symbols        = " $(cat gencodePrim.Prev | wc -l)           ## 80774
-echo "Gencode discontinued symbols    = " $(cat gencodePrim.discontinued | wc -l)   ## 38409
-
-
 ## Gene ambiguity venn diagram
 cat gencodePrim.Symbols | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.01.Current_symbols_matching_other_current_symbols
 cat gencodePrim.Alias | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.02.Alias_symbols_matching_other_alias_symbols
@@ -502,19 +530,23 @@ cat gencodePrim.discontinued | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 
 comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Symbols | uniq) > Gencode.08.Discontinued_symbols_matching_current_symbols
 comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Alias | uniq) > Gencode.09.Discontinued_symbols_matching_alias_symbols
 
+echo "5. Gene ambiguity venn diagram"
+echo "------------------------------"
 wc -l Gencode.*_matching_*_symbols
 
-cat gencodePrim.{Symbols,Alias,Prev,discontinued} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > Gencode.ambiguous_freq
-cat Gencode.ambiguous_freq | awk '{print $2}' | grep -Fwf - <(cat gencodePrim.ID_to_{Current,EachAlias,EachPrev,discontinued}) | sort -t$'\t' -k2,2 >  gencodePrim.ambiguous.temp
-#echo "GeneID" "Symbol" "status" "Synonyms" "Release_discontinued" "New_replace_ID" "New_replace_Symbol" "replace_Mapping_score" | tr ' ' '\t' > gencodePrim.complete_withdrawn.temp
-#cat ens_current_aggSyn.txt | awk 'BEGIN{FS=OFS="\t";}{if(!$2)$2="-";if(!$3)$3="-"; print $1,$2,"Current",$3,"-","-","-","-"}' >> gencodePrim.complete_withdrawn.temp
-#tail -n+2 gencode.gene.history.idmap.details | awk 'BEGIN{FS=OFS="\t";}{status="";if($3=="-")status="discontinued";else if($7=="<discontinued>")status="replaced then discontinued";else if($7=="<replaced>")status="replaced"; print $1,$2,status,"-",$5,$3,$4,$6;}' >> gencodePrim.complete_withdrawn.temp
+cat gencodePrim.{Symbols,Alias,Prev,discontinued} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > Gencode.ambiguous_freq.txt
+cat Gencode.ambiguous_freq.txt | awk '{print $2}' | grep -Fwf - <(cat gencodePrim.ID_to_{Current,EachAlias,EachPrev,discontinued}) | sort -t$'\t' -k2,2 >  gencodePrim.ambiguous.temp
 cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > gencodePrim.complete_withdrawn.temp
 cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly") print $1,$3,"Current",$4,$5,"-"}' >> gencodePrim.complete_withdrawn.temp
 tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,"discontinued","-","-","-";}' >> gencodePrim.complete_withdrawn.temp
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > Gencode.ambiguous.tab
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' gencodePrim.complete_withdrawn.temp gencodePrim.ambiguous.temp | sort | uniq >> Gencode.ambiguous.tab
 
-head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > Gencode.ambiguous
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' gencodePrim.complete_withdrawn.temp gencodePrim.ambiguous.temp | sort | uniq >> Gencode.ambiguous
+echo " "
+echo "GENCODE has "$(cat Gencode.ambiguous_freq.txt | wc -l)" ambigious symbols causing "$(tail -n+2 Gencode.ambiguous.tab | wc -l)" ambigious records."
+echo "Here are the most 10 ambiguous symbols and how many time do they show up among all gene symbols:"
+head Gencode.ambiguous_freq.txt
+echo "-------------------------"
 
 ##################################################################################################################
 ##################################################################################################################
