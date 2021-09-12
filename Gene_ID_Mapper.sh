@@ -578,11 +578,11 @@ echo "-------------------------"
 ## Explore
 # Explore types of genes
 echo "Approved HGNC genes can be calssified as:"
-tail -n+2 hgnc_complete_set.txt | awk -F"\t" '{if($6=="Approved")print $4 " - " $5}' | sort | uniq -c 
+tail -n+2 hgnc_complete_set.txt | awk -F"\t" '{if($6=="Approved")print $4 "|" $5}' | sort | uniq -c 
 
 ## Generate a map of approved HGNC gene IDs to dbXrefs
-head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$19,$20,$9,$11,$4 " - " $5}' > hgnc_approved.map ## hgnc_id symbol  entrez_id   ensembl_gene_id    alias_symbol    prev_symbol    locus_group-locus_type(i.e. gene_type)
-cat hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($6=="Approved")print $1,$2,$19,$20,$9,$11,$4 " - " $5}' >> hgnc_approved.map
+head -n1 hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,$19,$20,$9,$11,$7,$4 "|" $5}' > hgnc_approved.map ## hgnc_id symbol  entrez_id   ensembl_gene_id    alias_symbol    prev_symbol    location   locus_group|locus_type(i.e. gene_type)
+cat hgnc_complete_set.txt | awk 'BEGIN{FS=OFS="\t";}{if($6=="Approved")print $1,$2,$19,$20,$9,$11,$7,$4 "|" $5}' >> hgnc_approved.map
  
 ## Stats
 tail -n+2 hgnc_approved.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" approved HGNC ids.", "They are cross referenced with:", "Entrez IDs = "b, "Ensembl IDs = "c}' 
@@ -613,9 +613,9 @@ grep "HGNC:" Nomenclature_status_NA | wc -l     ## 0
 grep "Ensembl:" Nomenclature_status_NA | wc -l  ## 1898
 
 ## Generate a map of gene IDs to dbXrefs
-head -n1 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{print $2,$3,"HGNC","Ensembl",$5,$10}' > Homo_sapiens.gene_info.map ## GeneID  Symbol  HGNC    Ensembl     Synonyms    type_of_gene
-tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6!="-")print $2,$3,$6,$5,$10}' | awk 'BEGIN{FS=OFS="\t"}{ delete vars; split($3,a,"|");for(i in a) { n = index(a[i], ":"); if(n) { x = substr(a[i], n + 1); key = substr(a[i], 1, n - 1); val = substr(a[i], n + 1, length(x)); if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val; } } HGNC = vars["HGNC"]; Ensembl = vars["Ensembl"]; print $1,$2,HGNC,Ensembl,$4,$5; }' >> Homo_sapiens.gene_info.map
-tail -n+2 Homo_sapiens.gene_info | awk 'BEGIN{FS=OFS="\t"}{if($6=="-")print $2,$3,"","",$5,$10}' >> Homo_sapiens.gene_info.map ## $6 = dbXrefs
+head -n1 Homo_sapiens.gene_info.wPrev | awk 'BEGIN{FS=OFS="\t"}{print $2,$3,"HGNC","Ensembl",$5,$17,$8,$10}' > Homo_sapiens.gene_info.map ## GeneID  Symbol  HGNC    Ensembl     Synonyms    PrevSymbol   map_location   type_of_gene
+tail -n+2 Homo_sapiens.gene_info.wPrev | awk 'BEGIN{FS=OFS="\t"}{if($6!="-")print $2,$3,$6,$5,$17,$8,$10}' | awk 'BEGIN{FS=OFS="\t"}{ delete vars; split($3,a,"|");for(i in a) { n = index(a[i], ":"); if(n) { x = substr(a[i], n + 1); key = substr(a[i], 1, n - 1); val = substr(a[i], n + 1, length(x)); if(vars[key]=="")vars[key] = val;else vars[key] = vars[key]","val; } } HGNC = vars["HGNC"]; Ensembl = vars["Ensembl"]; print $1,$2,HGNC,Ensembl,$4,$5,$6,$7; }' >> Homo_sapiens.gene_info.map
+tail -n+2 Homo_sapiens.gene_info.wPrev | awk 'BEGIN{FS=OFS="\t"}{if($6=="-")print $2,$3,"","",$5,$17,$8,$10}' >> Homo_sapiens.gene_info.map ## $6 = dbXrefs
 
 ## Stats
 tail -n+2 Homo_sapiens.gene_info.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" current Entrez ids.", "They are cross referenced with:", "HGNC IDs = "b, "and Ensembl IDs = "c}'
@@ -630,8 +630,8 @@ echo "Current Gencode genes can be calssified as:"
 tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $6}' | sort | uniq -c
 
 ## Generate a map of Gencode gene IDs on the Primary Assembly to dbXrefs
-head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$7,$8,$4,$5,$6}' > gencode_primary.map ## GeneID Symbol  EntrezGene   HGNC    Aliases    PrevSymbols    gene_type
-tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $1,$3,$7,$8,$4,$5,$6}' >> gencode_primary.map
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,$7,$8,$4,$5,$9,$6}' > gencode_primary.map ## GeneID Symbol  EntrezGene   HGNC    Aliases    PrevSymbols    Location   gene_type
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $10=="Primary Assembly")print $1,$3,$7,$8,$4,$5,$9,$6}' >> gencode_primary.map
 
 ## Stats
 tail -n+2 gencode_primary.map | awk 'BEGIN{FS="\t";OFS="\n";}{a+=1;if($3!="")b+=1;if($4!="")c+=1;}END{print "There are "a" current Ensembl ids", "They are cross referenced with:", "HGNC IDs = "b, "Entrez IDs = "c}'  
