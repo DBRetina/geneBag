@@ -443,10 +443,11 @@ if [ ! -f gencode.v${vcur}.metadata.EntrezGene ];then
 fi
 
 cur_gtf=(gencode_gtf/gencode.v${vcur}.*.gtf)
-cat $cur_gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; print id,trans; }' > gencode.trans_to_gene.map
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next}{ print $0, a[$2]}' gencode.v${vcur}.metadata.EntrezGene gencode.trans_to_gene.map > gencode.trans_to_entrez.map
+cat $cur_gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; print trans,id; }' > gencode.trans_to_gene.map
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next}{ print a[$1],$2}' gencode.trans_to_gene.map gencode.v${vcur}.metadata.EntrezGene | sort | uniq > gencode.v${vcur}.gen_metadata.EntrezGene
+cat gencode.v${vcur}.gen_metadata.EntrezGene | awk 'BEGIN{FS=OFS="\t";S=","}{if(!a[$1])a[$1]=$2;else a[$1]=a[$1]S$2;}END{for(i in a)print i,a[i]}' > gencode.v${vcur}.gen_metadata.EntrezGene.agg
 echo "GeneID EntrezGene" | tr ' ' '\t' > gencode.gene_to_entrez.map
-cat gencode.trans_to_entrez.map | awk 'BEGIN{FS="[.\t]";OFS="\t"}{print $1,$5}' | sort | uniq >> gencode.gene_to_entrez.map
+cat gencode.v${vcur}.gen_metadata.EntrezGene.agg | awk 'BEGIN{FS="[.\t]";OFS="\t"}{print $1,$3}' | sort | uniq >> gencode.gene_to_entrez.map
 awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next;}{$7=a[$1] FS $7;print $0;}' gencode.gene_to_entrez.map ens_current_aggSyn_aggPrev_genAnn.txt > ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt
 gencode_master="ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt"
 
