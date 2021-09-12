@@ -101,19 +101,25 @@ cat withdrawn.txt | awk 'BEGIN{FS=OFS="\t";}{if($2=="Merged/Split"){split($4,a,"
 echo "No. of withdrawn UIDs replaced by new approved UIDs = "$(cat wdHGNC.ID_to_EachPrev | wc -l)
 
 comm -12 <(sort hgnc.ID_to_Current) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsCurrent
-echo "No. of withdrawn symbols used as current official symbols = "$(cat wdHGNC.ID_to_EachPrev_AsCurrent | wc -l)
+echo "No. of withdrawn symbols used as current official symbols = "$(cat wdHGNC.ID_to_EachPrev_AsCurrent | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat wdHGNC.ID_to_EachPrev_AsCurrent | wc -l) "gene IDs"
 
 comm -12 <(sort hgnc.ID_to_EachAlias) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsAlias
-echo "No. of withdrawn symbols used as current alias symbols = "$(cat wdHGNC.ID_to_EachPrev_AsAlias | wc -l)
+echo "No. of withdrawn symbols used as current alias symbols = "$(cat wdHGNC.ID_to_EachPrev_AsAlias | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat wdHGNC.ID_to_EachPrev_AsAlias | wc -l) "gene IDs"
 
 comm -12 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev) > wdHGNC.ID_to_EachPrev_AsPrev
-echo "No. of withdrawn symbols reported in previous symbols of current genes = "$(cat wdHGNC.ID_to_EachPrev_AsPrev | wc -l)
+echo "No. of withdrawn symbols reported in previous symbols of current genes = "$(cat wdHGNC.ID_to_EachPrev_AsPrev | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat wdHGNC.ID_to_EachPrev_AsPrev | wc -l) "gene IDs"
 
 comm -23 <(sort wdHGNC.ID_to_EachPrev) <(cat wdHGNC.ID_to_EachPrev_AsCurrent wdHGNC.ID_to_EachPrev_AsAlias wdHGNC.ID_to_EachPrev_AsPrev | sort | uniq) > PrevSymbols.missing_From_Current
-echo "No. of missing withdrawn symbols that do not show up in the new approved gene records = "$(cat PrevSymbols.missing_From_Current | wc -l)
+echo "No. of missing withdrawn symbols that do not show up in the new approved gene records = "$(cat PrevSymbols.missing_From_Current | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat PrevSymbols.missing_From_Current | wc -l) "gene IDs"
+echo "- Missing symbols that show up as current symbols for other current HGNC genes: "
+cat PrevSymbols.missing_From_Current | cut -f2 | grep -Fwf - hgnc.ID_to_Current
+echo "- Missing symbols that show up as aliases for other current HGNC genes: "
+cat PrevSymbols.missing_From_Current | cut -f2 | grep -Fwf - hgnc.ID_to_EachAlias
+echo "- Missing symbols that show up as previous symbols for other current HGNC genes: "
+cat PrevSymbols.missing_From_Current | cut -f2 | grep -Fwf - hgnc.ID_to_EachPrev
 
 comm -23 <(sort hgnc.ID_to_EachPrev) <(sort wdHGNC.ID_to_EachPrev) > PrevSymbols.missing_From_Withdrawn
-echo "No. of previous symbols of current genes that do not show up in the withdrawn symbols = "$(cat PrevSymbols.missing_From_Withdrawn | wc -l)
+echo "No. of previous symbols of current genes that do not show up in the withdrawn symbols = "$(cat PrevSymbols.missing_From_Withdrawn | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat PrevSymbols.missing_From_Withdrawn | wc -l) "gene IDs"
 echo "----------------------"
 
 
@@ -262,16 +268,20 @@ echo "----------------------------------"
 echo "No. of withdrawn UIDs replaced by new approved UIDs = "$(cat wdEntrez.ID_to_EachPrev | wc -l)
 
 comm -12 <(sort entrez.ID_to_Current) <(sort wdEntrez.ID_to_EachPrev) > wdEntrez.ID_to_EachPrev_AsCurrent
-echo "No. of withdrawn symbols used as current official symbols = "$(cat wdEntrez.ID_to_EachPrev_AsCurrent | wc -l)
+echo "No. of withdrawn symbols used as current official symbols = "$(cat wdEntrez.ID_to_EachPrev_AsCurrent | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat wdEntrez.ID_to_EachPrev_AsCurrent | wc -l) "gene IDs"
 
 comm -12 <(sort entrez.ID_to_EachAlias) <(sort wdEntrez.ID_to_EachPrev) > wdEntrez.ID_to_EachPrev_AsAlias
-echo "No. of withdrawn symbols used as current alias symbols = "$(cat wdEntrez.ID_to_EachPrev_AsAlias | wc -l)
+echo "No. of withdrawn symbols used as current alias symbols = "$(cat wdEntrez.ID_to_EachPrev_AsAlias | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat wdEntrez.ID_to_EachPrev_AsAlias | wc -l) "gene IDs"
 
-comm -23 <(sort wdEntrez.ID_to_EachPrev) <(cat wdEntrez.ID_to_EachPrev_AsCurrent wdEntrez.ID_to_EachPrev_AsAlias | sort | uniq) > PrevSymbols.missing_From_Current
-echo "No. of missing withdrawn symbols that do not show up in the new approved gene records = "$(cat PrevSymbols.missing_From_Current | wc -l)
+comm -23 <(sort wdEntrez.ID_to_EachPrev) <(cat wdEntrez.ID_to_EachPrev_AsCurrent wdEntrez.ID_to_EachPrev_AsAlias | sort | uniq) > PrevSymbols.missing_From_Current  ## This is the same list we consider "previous symbols"
+echo "No. of missing withdrawn symbols that do not show up in the new approved gene records = "$(cat PrevSymbols.missing_From_Current | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat PrevSymbols.missing_From_Current | wc -l) "gene IDs"
 
 grep -v "<LOC.*>" PrevSymbols.missing_From_Current | grep -v "<FLJ.*>" | grep -v "<KIAA.*>" | grep -v "<MGC.*>" | grep -v "<DKFZ[Pp].*>" | grep -vi "<c.*orf.*>" | grep -v "<DJ.*\..*>" | grep -v "<HSA.*>" | grep -v "<PRO.*>" | grep -v "<RP.*-.*\..*>" | grep -v "<AC.*\..*>" | grep -vi "<none>" | grep -vi "<null>" > PrevSymbols.missing_From_Current.knownIDs
-echo "No. of missing withdrawn symbols after exclusion of LOC* IDs  = "$(cat PrevSymbols.missing_From_Current.knownIDs | wc -l)
+echo "No. of missing withdrawn symbols after exclusion of LOC* IDs  = "$(cat PrevSymbols.missing_From_Current.knownIDs | cut -f2 | sort | uniq | wc -l) "symbols for " $(cat PrevSymbols.missing_From_Current.knownIDs | wc -l) "gene IDs"
+echo "- Missing symbols that show up as current symbols for other current HGNC genes: "
+cat PrevSymbols.missing_From_Current | cut -f2 | grep -Fwf - entrez.ID_to_Current
+echo "- Missing symbols that show up as aliases for other current HGNC genes: "
+cat PrevSymbols.missing_From_Current | cut -f2 | grep -Fwf - entrez.ID_to_EachAlias
 echo "-------------------------"
 
 
