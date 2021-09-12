@@ -546,6 +546,8 @@ comm -12 <(cat gencodePrim.Prev | uniq) <(cat gencodePrim.Alias | uniq)  > Genco
 cat gencodePrim.discontinued | uniq -c | awk '{if($1>1){$1="";print $0}}' | sed 's/ //' > Gencode.07.Discontinued_symbols_matching_other_discontinued_symbols
 comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Symbols | uniq) > Gencode.08.Discontinued_symbols_matching_current_symbols
 comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Alias | uniq) > Gencode.09.Discontinued_symbols_matching_alias_symbols
+comm -12 <(cat gencodePrim.discontinued | uniq) <(cat gencodePrim.Prev | uniq) > Gencode.10.Discontinued_symbols_matching_previous_symbols
+
 
 echo "5. Gene ambiguity venn diagram"
 echo "------------------------------"
