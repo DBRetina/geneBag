@@ -1,16 +1,6 @@
-# Best Mutual Gene Bag Match
-
-KSIZE=25
-
-REF1=VER28_GRCh37
-REF2=VER38_GRCh38
-
-REF1_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.transcripts.fa.gz
-REF2_URL=http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.transcripts.fa.gz
-
-wget ${REF1_URL} -O ${REF1}.fa.gz
-wget ${REF2_URL} -O ${REF2}.fa.gz
-gunzip ${REF1}.fa.gz ${REF2}.fa.gz
+REF1="$1"
+REF2="$2"
+KSIZE=$3
 
 #1 Transform first annotation -------------------------------------------------------------
 sed -i "s/^>/>$REF1|/" ${REF1}.fa
@@ -55,3 +45,8 @@ awk -v md=$md -v mc=$mc 'BEGIN{FS="\t";S="|";}FNR==NR{a[$1]=$3;b[$1]=$2S$3;next;
 python geneBag_matcher.py "${REF1}." "${REF2}." "${kPro_index}_relations.csv"
 
 
+tail -n+2 ${REF1}._matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OF
+S="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF1}_matches.tab 
+
+tail -n+2 ${REF2}._matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OF
+S="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF2}_matches.tab 
