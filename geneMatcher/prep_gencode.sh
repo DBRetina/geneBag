@@ -9,3 +9,7 @@ if [[ "$line" == ">"* ]];then if [[ "$line" == *"_PAR_Y"* ]];then safe=0;else sa
 if [ $safe -eq 1 ];then echo $line;fi
 done > ${REF}.fa
 
+cat ${REF}.fa | seqkit grep -r -p "\|miRNA\|$" > ${REF}.miRNA.fa
+cat ${REF}.fa | seqkit grep -r -p "\|IG_.*gene\|" -p "\|TR_.*gene\|" > ${REF}.immSeg.fa
+cat ${REF}.fa | seqkit grep -v -r -p "\|miRNA\|$" -p "\|IG_.*gene\|" -p "\|TR_.*gene\|" > ${REF}.simple.fa
+

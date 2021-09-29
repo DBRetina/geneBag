@@ -21,8 +21,10 @@ names_file = fasta_file + ".names"
 KF = kp.kDataFramePHMAP(kp.KMERS, kp.nonCanonicalInteger_Hasher, {"kSize":kSize})
 
 # a bit slower but memory effiecent?
-# KF = kp.kDataFramePHMAP(kp.KMERS, kp.nonCanonicalInteger_Hasher, {"kSize":kSize})
+#KF = kp.kDataFrameMQF(kp.KMERS, kp.nonCanonicalInteger_Hasher, {"kSize":kSize})
 
+# MQF with high intial memory 
+#KF = kp.kDataFrameMQF(kSize, 34, kp.nonCanonicalInteger_Hasher)
 
 cKF = kp.index(KF, fasta_file, chunkSize, names_file)
 cKF.save("idx_" + fasta_file.replace(".fa",""))

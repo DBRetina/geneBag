@@ -2,19 +2,23 @@ REF1="$1"
 REF2="$2"
 KSIZE=$3
 
+mkdir -p ${REF1}.${REF2}
+scriptdir=$(pwd)
+workdir=$(pwd)/${REF1}.${REF2}
 #1 Transform first annotation -------------------------------------------------------------
-sed -i "s/^>/>$REF1|/" ${REF1}.fa
-grep ">" ${REF1}.fa | cut -c2- |  awk -v ref=${REF1} -F'|' '{print $0"\t"ref"."$3}' > ${REF1}.fa.names
+sed "s/^>/>$REF1|/" ${REF1}.fa > $workdir/${REF1}.fa
+grep ">" $workdir/${REF1}.fa | cut -c2- |  awk -v ref=${REF1} -F'|' '{print $0"\t"ref"."$3}' > $workdir/${REF1}.fa.names
 
 #2 Transform second annotation
-sed -i "s/^>/>$REF2|/" ${REF2}.fa
-grep "^>" ${REF2}.fa | cut -c2- |  awk -v ref=${REF2} -F'|' '{print $0"\t"ref"."$3}' > ${REF2}.fa.names
+sed "s/^>/>$REF2|/" ${REF2}.fa > $workdir/${REF2}.fa
+grep "^>" $workdir/${REF2}.fa | cut -c2- |  awk -v ref=${REF2} -F'|' '{print $0"\t"ref"."$3}' > $workdir/${REF2}.fa.names
 
 #3 Indexing & Pairwise generation -------------------------------------------------------------
+cd $workdir
 cat ${REF2}.fa ${REF1}.fa > merged.fa
 cat ${REF2}.fa.names ${REF1}.fa.names > merged.fa.names
 
-python index.py merged.fa ${KSIZE}
+python "$scriptdir"/index.py merged.fa ${KSIZE}
 kSpider2 pairwise -i idx_merged
 
 #4 Annotation & Filteration -------------------------------------------------------------
@@ -37,16 +41,14 @@ echo ":START_ID|START_name|START_size|shared_count:int|jDist:float|smPerc:float|
 awk -v md=$md -v mc=$mc 'BEGIN{FS="\t";S="|";}FNR==NR{a[$1]=$3;b[$1]=$2S$3;next;}{
    g1=a[$2]; g2=a[$3]; min=g1;min=(min < g2 ? min : g2); 
    jDist=$4*100/(g1+g2-$4); smPerc=$4*100/min; 
-   if(jDist>md || smPerc>mc)
+   if(jDist>md && smPerc>mc)
      printf("%s%s%s%s%s%s%.1f%s%.1f%s%s%s%s\n", $2,S,b[$2],S,$4,S,jDist,S,smPerc,S,b[$3],S,$3)}' \
    ${kPro_index}_nodes_size.tsv <(tail -n+2 ${kPro_index}_kSpider_pairwise.tsv) >> ${kPro_index}_relations.csv
 
 #5 Automatic Detection of Best Mutual GeneBag Match -------------------------------------------------------------
-python geneBag_matcher.py "${REF1}." "${REF2}." "${kPro_index}_relations.csv"
+python "$scriptdir"/geneBag_matcher.py "${REF1}" "${REF2}" "${kPro_index}_relations.csv"
 
 
-tail -n+2 ${REF1}._matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OF
-S="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF1}_matches.tab 
+tail -n+2 ${REF1}_matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OFS="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF1}_matches.tab 
 
-tail -n+2 ${REF2}._matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OF
-S="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF2}_matches.tab 
+tail -n+2 ${REF2}_matches.tsv | sed "s/), ('/|/g" | sed "s/\[(//g; s/'//g; s/)\]//g;" | sed 's/, /,/g' | awk 'BEGIN{FS=OFS="\t"}{split($3,a,"|");for(i in a)print $1,a[i]}' | tr ',' '\t' > ${REF2}_matches.tab 
