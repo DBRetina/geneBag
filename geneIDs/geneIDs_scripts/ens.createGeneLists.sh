@@ -29,7 +29,7 @@ suffix=".chr_patch_hapl_scaff.annotation.gtf.gz";
 vcur=${curGTF#$prefix};
 vcur=${vcur%$suffix};
 #vLast=$(($vcur - 1))
-echo $vcur #$vLast
+#echo $vcur #$vLast
 
 # Download all assembly report to make assembly map to differentiate 1ry assembly from patches and alternative loci
 mkdir -p assemblies_reports && cd assemblies_reports
@@ -46,11 +46,11 @@ cd ../
 # Dowanload all previous Gencode GTFs
 mkdir -p gencode_gtf && cd gencode_gtf
 genFTP="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human"
-for i in $(seq 20 ${vcur});do echo $i;
+for i in $(seq 20 ${vcur});do #echo $i;
   wget -O gencode.v${i}.ALL.GRCh38.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
-for i in $(seq 16 19);do echo $i;
+for i in $(seq 16 19);do #echo $i;
   wget -O gencode.v${i}.ALL.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
-for i in $(seq 5 15);do echo $i;
+for i in $(seq 5 15);do #echo $i;
   wget -O gencode.v${i}.CHR.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.annotation.gtf.gz 2>/dev/null;done
 wget -O gencode.v4.CHR.GRCh37.gtf.gz $genFTP/release_4/gencode_v4.annotation.GRCh37.gtf.gz 2>/dev/null;
 wget -O gencode.v3d.CHR.GRCh37.gtf.gz $genFTP/release_3d/gencode.v3d.gtf.gz 2>/dev/null;
@@ -64,7 +64,7 @@ r=2
 for i in 2 2a 3b 3c 3d $(seq 4 ${vcur});do
   gtf=(gencode.v${i}.*.gtf.gz)
   if [ -f "${gtf}" ];then
-    echo $gtf
+    #echo $gtf
     gunzip ${gtf}
     output=${gtf%.gtf.gz}
     cat ${gtf%.gz} | awk -F"\t" '!/#/{if($3=="gene")print $1":"$4"-"$5";"$1";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=${i} -v rank=${r} 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank; }' | grep -v "^ENSGR" > $output.genes
@@ -165,18 +165,18 @@ echo "--------------------------------------------------"
 ## Problem exploration: Difference between Ensembl and gencode annotations
 # 1. Ensembl doesn't have symbols while Gencode does
 cat ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($2!=$3 && $3!="Not_in_Gencode")print}' > ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt ##  21606
-echo "No of IDs where Ensembl doesn't have symbols while Gencode does     = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt | wc -l)       
+echo "Number of IDs where Ensembl doesn't have symbols while Gencode does     = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_unmatchedSym.txt | wc -l)       
 # 2. Ensembl IDs not found in Gencode annotation:
 # Example "ENSG00000274081" belongs to ALT_REF_LOCI. The Ensembl website states that its 1st transcript is part of the Gencode basic annotation
 head -n1 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$4}' > ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt
 tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk 'BEGIN{FS=OFS="\t"}{if($3=="Not_in_Gencode")print $1,$2,$4}' >> ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt ## 123
-echo "No of Ensembl IDs not found in Gencode annotation                   = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt | wc -l)       
+echo "Number of Ensembl IDs not found in Gencode annotation                   = " $(tail -n+2 ens_current_aggSyn_aggPrev_genAnn_NotinGencode.txt | wc -l)       
 # 3. Gencode IDs not found in Ensembl annotation
 tail -n+2 gencode_gtf/$cur_Ann | awk -F"\t" '{print $1}' | sort > id.gen  ## 67005
 tail -n+2 ens_current_aggSyn_aggPrev_genAnn.txt | awk -F"\t" '{print $1}' | sort > id.ens     ## 67128
 comm -23 id.gen id.ens > id.gen.sp  ## 0  ##i.e. all gencode IDs present in ensembl
 missing_ids=$(cat id.gen.sp | wc -l)
-if [ $missing_ids -gt 0 ];then echo "These GENCODE IDS are missing from Ensembl annotation"; cat id.gen.sp;else echo "No GENCODE IDS are missing from Ensembl annotation";fi
+if [ $missing_ids -gt 0 ];then echo "These GENCODE IDS are missing from Ensembl annotation"; cat id.gen.sp;else echo "There are no missing GENCODE IDS from Ensembl annotation";fi
 echo "Basic check is done"
 echo "-------------------"
 
@@ -203,8 +203,9 @@ echo "Examples for these records (if any):"
 cat Gencodesame.*_matching_*_symbols | head
 echo "-------------------"
 
-echo "4. Tracking of replaced HGNC IDs"
+echo "4. Tracking of replaced Ensembl IDs"
 echo "--------------------------------"
 echo "TO BE DONE"
+echo "Ongoing effort in temp/ens.trackDiscontinued.sh"
 echo "----------------------"
 

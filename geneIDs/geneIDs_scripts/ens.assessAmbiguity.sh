@@ -19,11 +19,14 @@ wc -l Gencode.*_matching_*_symbols
 
 cat gencodePrim.{Symbols,Alias,Prev,discontinued} | sort | uniq -c | awk '{if($1>1){print $0}}' | sort -nr  > Gencode.ambiguous_freq.txt
 cat Gencode.ambiguous_freq.txt | awk '{print $2}' | grep -Fwf - <(cat gencodePrim.ID_to_{Current,EachAlias,EachPrev,discontinued}) | sort -t$'\t' -k2,2 >  gencodePrim.ambiguous.temp
-cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > gencodePrim.complete_withdrawn.temp
-cat $gencode_master | awk 'BEGIN{FS=OFS="\t";}{if($3!="Not_in_Gencode" && $9=="Primary Assembly") print $1,$3,"Current",$4,$5,"-"}' >> gencodePrim.complete_withdrawn.temp
-tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,"discontinued","-","-","-";}' >> gencodePrim.complete_withdrawn.temp
-head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > Gencode.ambiguous.tab
-awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' gencodePrim.complete_withdrawn.temp gencodePrim.ambiguous.temp | sort | uniq >> Gencode.ambiguous.tab
+gencode_master="ens_current_aggSyn_aggPrev_genAnn_dbXrefs.txt"
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > gencode.complete_withdrawn.temp
+tail -n+2 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print $1,$3,"Current",$4,$5,"-"}' > gencode.complete_withdrawn.temp
+tail -n+2 gencode.gene.discontinued | awk 'BEGIN{FS=OFS="\t";}{print $1,$2,"discontinued","-","-","-";}' >> gencode.complete_withdrawn.temp
+head -n1 $gencode_master | awk 'BEGIN{FS=OFS="\t";}{print "<Ambiguous_Symbol>",$1,$3,"status",$4,$5,"new_symbol_ifReplaced"}' > Gencode.ambiguous.tab ## Note that the field "new_symbol_ifReplaced" will be always "-" because we did not map discontinued genes to their new symbols yet.
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$0;next;}{print $2,a[$1]}' gencode.complete_withdrawn.temp gencodePrim.ambiguous.temp | sort | uniq >> Gencode.ambiguous.tab
+
+
 
 echo " "
 echo "GENCODE has "$(cat Gencode.ambiguous_freq.txt | wc -l)" ambigious symbols causing "$(tail -n+2 Gencode.ambiguous.tab | wc -l)" ambigious records."
