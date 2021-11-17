@@ -62,7 +62,8 @@ extract_geneAnn () {
     zcat ${gtf} | awk -F"\t" '!/#/{if($3=="gene")print $1":"$4"-"$5";"$1";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=${i} -v rank=${r} 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank; }' | grep -v "^ENSGR" > $output.genes
     echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
     awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
-    rm ${gtf}
+    if [ ! $i -eq ${vcur} ];then rm ${gtf};fi 
+    rm $output.genes;
   fi
 }
 
@@ -92,16 +93,17 @@ output=${gtf%.gtf.gz}
 paste v1.start.uq v1.end.uq | awk 'BEGIN{FS=OFS="\t";}!/#/{print $1,$2,$3,$4,$5":"$6"-"$10,$5,$7,$8;}' | grep -v "^ENSGR" > $output.genes
 echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
 awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
-rm v1.end v1.start v1.end.uq v1.start.uq
+rm v1.end v1.start v1.end.uq v1.start.uq $output.genes
 
 
 cur_Ann=(gencode.v${vcur}.*.genes.ann)
 head -n1 $cur_Ann > ../gencode.gene.track
 for ann in *.genes.ann;do tail -n+2 $ann;done | sort -t$'\t' -k1,1 -k8,8nr  >> ../gencode.gene.track
+for ann in *.genes.ann;do if [ "$ann" != "$cur_Ann" ];then rm $ann;fi;done
 cd ../
 
 ## update Ensembl gene symbols from current gencode annotation && add all annotation fields from the GTF
- awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;b[$1]=$3 FS $4 FS $5 FS $6 FS $7;next;}{if(a[$1])print $1,$2,a[$1],$3,b[$1];else print $1,$2,"Not_in_Gencode",$3;}' gencode_gtf/$cur_Ann ens_current_aggSyn.txt > ens_current_aggSyn_genAnn.txt
+awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;b[$1]=$3 FS $4 FS $5 FS $6 FS $7;next;}{if(a[$1])print $1,$2,a[$1],$3,b[$1];else print $1,$2,"Not_in_Gencode",$3;}' gencode_gtf/$cur_Ann ens_current_aggSyn.txt > ens_current_aggSyn_genAnn.txt
 
 ## generate a uniqe list of previous symbols for each gene ID (check to exclude entries from v1 with no gene symbols)
 head -n1 gencode.gene.track > gencode.gene.uniqIDs
