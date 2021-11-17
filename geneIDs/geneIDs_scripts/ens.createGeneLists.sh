@@ -33,47 +33,52 @@ vcur=${vcur%$suffix};
 
 # Download all assembly report to make assembly map to differentiate 1ry assembly from patches and alternative loci
 mkdir -p assemblies_reports && cd assemblies_reports
+for sym in M X Y $(seq 1 22);do echo "chr"$sym"|Primary Assembly" | tr '|' '\t';done > assembly_map
 wget -q -O- https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/ | \
          grep -o "GCA_000001405.[0-9]\+_GRCh3[78].p[0-9]\+" | sort | uniq > assemblies.lst
 cat assemblies.lst | while read asm;do
   wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/${asm}/${asm}_assembly_report.txt
-done
-
-for sym in M X Y $(seq 1 22);do echo "chr"$sym"|Primary Assembly" | tr '|' '\t';done > assembly_map
-for rep in *_assembly_report.txt;do cat $rep | awk 'BEGIN{FS=OFS="\t";}!/#/{print $5,$8}';done | sort | uniq >> assembly_map
+  cat ${asm}_assembly_report.txt | awk 'BEGIN{FS=OFS="\t";}!/#/{print $5,$8}';
+  rm ${asm}_assembly_report.txt
+done | sort | uniq >> assembly_map
 cd ../
   
 # Dowanload all previous Gencode GTFs
 mkdir -p gencode_gtf && cd gencode_gtf
 genFTP="ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human"
-for i in $(seq 20 ${vcur});do #echo $i;
-  wget -O gencode.v${i}.ALL.GRCh38.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
-for i in $(seq 16 19);do #echo $i;
-  wget -O gencode.v${i}.ALL.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null;done
-for i in $(seq 5 15);do #echo $i;
-  wget -O gencode.v${i}.CHR.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.annotation.gtf.gz 2>/dev/null;done
-wget -O gencode.v4.CHR.GRCh37.gtf.gz $genFTP/release_4/gencode_v4.annotation.GRCh37.gtf.gz 2>/dev/null;
-wget -O gencode.v3d.CHR.GRCh37.gtf.gz $genFTP/release_3d/gencode.v3d.gtf.gz 2>/dev/null;
-wget -O gencode.v3c.CHR.GRCh37.gtf.gz $genFTP/release_3c/gencode.v3c.annotation.GRCh37.gtf.gz 2>/dev/null;
-wget -O gencode.v3b.CHR.GRCh37.gtf.gz $genFTP/release_3b/gencode.v3b.annotation.GRCh37.gtf.gz 2>/dev/null;
-wget -O gencode.v2a.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2a.gtf.gz 2>/dev/null;
-wget -O gencode.v2.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2.gtf.gz 2>/dev/null;
-wget -O gencode.v1.CHR.GRCh37.gtf.gz $genFTP/release_1/gencode_data.rel1.v2.gtf.gz 2>/dev/null;
-
-r=2
+declare -A arr; r=2;
 for i in 2 2a 3b 3c 3d $(seq 4 ${vcur});do
-  gtf=(gencode.v${i}.*.gtf.gz)
-  if [ -f "${gtf}" ];then
-    #echo $gtf
-    gunzip ${gtf}
-    output=${gtf%.gtf.gz}
-    cat ${gtf%.gz} | awk -F"\t" '!/#/{if($3=="gene")print $1":"$4"-"$5";"$1";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=${i} -v rank=${r} 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank; }' | grep -v "^ENSGR" > $output.genes
-    echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
-    awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
-  fi
+  arr["$i"]="$r";
   ((r=r+1));
 done
 
+extract_geneAnn () {
+  i=$1;r=${arr["$i"]};
+  gtf=(gencode.v${i}.*.gtf.gz)
+  if [ -f "${gtf}" ];then
+    #echo $gtf
+    #gunzip ${gtf}
+    output=${gtf%.gtf.gz}
+    zcat ${gtf} | awk -F"\t" '!/#/{if($3=="gene")print $1":"$4"-"$5";"$1";"$9}' | grep -v "_PAR_Y" | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" -v ann_version=${i} -v rank=${r} 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; name = vars["gene_name"]; type = vars["gene_type"]; hgnc = vars["hgnc_id"]; sub(/\..*/,"",id); print id,name,type,hgnc,$1,$2,ann_version,rank; }' | grep -v "^ENSGR" > $output.genes
+    echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
+    awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
+    rm ${gtf}
+  fi
+}
+
+for i in $(seq 20 ${vcur});do #echo $i;
+  wget -O gencode.v${i}.ALL.GRCh38.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null; extract_geneAnn "$i";done
+for i in $(seq 16 19);do #echo $i;
+  wget -O gencode.v${i}.ALL.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.chr_patch_hapl_scaff.annotation.gtf.gz 2>/dev/null; extract_geneAnn "$i";done
+for i in $(seq 5 15);do #echo $i;
+  wget -O gencode.v${i}.CHR.GRCh37.gtf.gz $genFTP/release_${i}/gencode.v${i}.annotation.gtf.gz 2>/dev/null; extract_geneAnn "$i";done
+wget -O gencode.v4.CHR.GRCh37.gtf.gz $genFTP/release_4/gencode_v4.annotation.GRCh37.gtf.gz 2>/dev/null; extract_geneAnn "4";
+wget -O gencode.v3d.CHR.GRCh37.gtf.gz $genFTP/release_3d/gencode.v3d.gtf.gz 2>/dev/null; extract_geneAnn "3d";
+wget -O gencode.v3c.CHR.GRCh37.gtf.gz $genFTP/release_3c/gencode.v3c.annotation.GRCh37.gtf.gz 2>/dev/null; extract_geneAnn "3c";
+wget -O gencode.v3b.CHR.GRCh37.gtf.gz $genFTP/release_3b/gencode.v3b.annotation.GRCh37.gtf.gz 2>/dev/null; extract_geneAnn "3b";
+wget -O gencode.v2a.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2a.gtf.gz 2>/dev/null; extract_geneAnn "2a";
+wget -O gencode.v2.CHR.GRCh37.gtf.gz $genFTP/release_2/gencode_data.rel2.gtf.gz 2>/dev/null; extract_geneAnn "2";
+wget -O gencode.v1.CHR.GRCh37.gtf.gz $genFTP/release_1/gencode_data.rel1.v2.gtf.gz 2>/dev/null; 
 
 # special processing for release 1
 # note: There are 4262 gene IDs in this release without gene symbols
