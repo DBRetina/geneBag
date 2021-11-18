@@ -93,7 +93,7 @@ output=${gtf%.gtf.gz}
 paste v1.start.uq v1.end.uq | awk 'BEGIN{FS=OFS="\t";}!/#/{print $1,$2,$3,$4,$5":"$6"-"$10,$5,$7,$8;}' | grep -v "^ENSGR" > $output.genes
 echo "GeneID" "Symbol" "gene_type" "HGNC" "Location" "Assembly_type" "gencode_version" "rank" | tr ' ' '\t' > $output.genes.ann
 awk 'BEGIN{FS=OFS="\t";}FNR==NR{a[$1]=$2;next;}{$6=a[$6];print $0}' ../assemblies_reports/assembly_map $output.genes >> $output.genes.ann
-rm v1.end v1.start v1.end.uq v1.start.uq $output.genes
+rm gencode.v1.CHR.GRCh37.gtf v1.end v1.start v1.end.uq v1.start.uq $output.genes
 
 
 cur_Ann=(gencode.v${vcur}.*.genes.ann)
@@ -123,8 +123,8 @@ if [ ! -f gencode.v${vcur}.metadata.EntrezGene ];then
   gunzip gencode.v${vcur}.metadata.EntrezGene.gz
 fi
 
-cur_gtf=(gencode_gtf/gencode.v${vcur}.*.gtf)
-cat $cur_gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; print trans,id; }' > gencode.trans_to_gene.map
+cur_gtf=(gencode_gtf/gencode.v${vcur}.*.gtf.gz)
+zcat $cur_gtf | awk -F"\t" '!/#/{if($3=="transcript")print $9}' | sed 's/; /;/g' | sed 's/\"//g' | awk -F";" 'BEGIN{FS=";";OFS="\t"}{ delete vars; for(i = 1; i <= NF; ++i) { n = index($i, " "); if(n) { x = substr($i, n + 1); vars[substr($i, 1, n - 1)] = substr($i, n + 1, length(x)) } } id = vars["gene_id"]; trans = vars["transcript_id"]; print trans,id; }' > gencode.trans_to_gene.map
 awk 'BEGIN{FS=OFS="\t"}FNR==NR{a[$1]=$2;next}{ print a[$1],$2}' gencode.trans_to_gene.map gencode.v${vcur}.metadata.EntrezGene | sort | uniq > gencode.v${vcur}.gen_metadata.EntrezGene
 cat gencode.v${vcur}.gen_metadata.EntrezGene | awk 'BEGIN{FS=OFS="\t";S=","}{if(!a[$1])a[$1]=$2;else a[$1]=a[$1]S$2;}END{for(i in a)print i,a[i]}' > gencode.v${vcur}.gen_metadata.EntrezGene.agg
 echo "GeneID EntrezGene" | tr ' ' '\t' > gencode.gene_to_entrez.map
